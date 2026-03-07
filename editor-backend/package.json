@@ -1,0 +1,20 @@
+{
+  "name": "editor-backend",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "express": "^4.18.2",
+    "multer": "^1.4.5-lts.1",
+    "rust-media-engine": "*"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.17",
+    "@types/multer": "^1.4.11",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.0.0"
+  },
+  "scripts": {
+    "dev": "ts-node src/server.ts"
+  }
+}
