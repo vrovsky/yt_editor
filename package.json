@@ -1,0 +1,14 @@
+{
+  "name": "yt-editor-monorepo",
+  "private": true,
+  "workspaces": [
+    "rust-media-engine",
+    "web-editor-ui",
+    "editor-backend"
+  ],
+  "scripts": {
+    "build:rust": "npm --workspace=rust-media-engine run build",
+    "dev:ui": "npm --workspace=web-editor-ui run dev",
+    "dev:backend": "npm --workspace=editor-backend run dev"
+  }
+}
