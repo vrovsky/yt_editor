@@ -1,0 +1,34 @@
+[package]
+name = "rust-media-engine"
+version = "0.3.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "2.16.4", default-features = false, features = [
+    "napi4",
+    "napi6",
+    "async",
+    "serde-json",
+] }
+napi-derive = "2.16.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+
+# ── Whisper transcription via Hugging Face Candle ──
+candle-core = "0.8"
+candle-nn = "0.8"
+candle-transformers = "0.8"
+hf-hub = "0.3"
+tokenizers = "0.20"
+
+# ── Smart Export, scene detection, saliency, beat detection ──
+# Pure-Rust fallback implementations used (no system libraries required).
+# ffmpeg-next, av-scenechange, burn, rubato removed — they require
+# pkg-config + system FFmpeg/WGPU headers not available on Windows by default.
+
+[build-dependencies]
+napi-build = "2.0.1"

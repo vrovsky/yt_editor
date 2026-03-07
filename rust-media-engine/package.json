@@ -1,0 +1,19 @@
+{
+  "name": "rust-media-engine",
+  "version": "0.1.0",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "napi": {
+    "binaryName": "rust-media-engine",
+    "targets": [
+      "x86_64-pc-windows-msvc"
+    ]
+  },
+  "scripts": {
+    "build": "node -e \"try{require('fs').renameSync('rust-media-engine.win32-x64-msvc.node', 'rust-media-engine.win32-x64-msvc.old.node')}catch(e){}\" && napi build --platform --release",
+    "build:debug": "node -e \"try{require('fs').renameSync('rust-media-engine.win32-x64-msvc.node', 'rust-media-engine.win32-x64-msvc.old.node')}catch(e){}\" && napi build --platform"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.0.0"
+  }
+}
