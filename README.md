@@ -1,3 +1,5 @@
+Hack with Audacity Promthero track
+
 # AI Video Editor MVP (Transcript-Driven Rough Rust Based Video Cut Engine)
 
 ## Project Description
