@@ -29,9 +29,10 @@ const PreviewTab: React.FC<{
   onGenerate: () => void;
   onUploaded: (fileName: string, manifest: MetadataManifest) => void;
   manifest: MetadataManifest | null;
-}> = ({ youtuber, isAnalyzing, onGenerate, onUploaded, manifest }) => (
+  addToast: (msg: string, type?: 'info' | 'success' | 'error') => void;
+}> = ({ youtuber, isAnalyzing, onGenerate, onUploaded, manifest, addToast }) => (
   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '20px 16px', gap: 16, overflowY: 'auto' }}>
-    <UploadZone onReady={onUploaded} />
+    <UploadZone onReady={onUploaded} addToast={addToast} />
 
     <button
       className="btn btn-action"
@@ -127,7 +128,8 @@ const ReviewTab: React.FC<{
 const ExportTab: React.FC<{
   timeline: Timeline | null;
   fileName: string | null;
-}> = ({ timeline, fileName }) => {
+  addToast: (msg: string, type?: 'info' | 'success' | 'error') => void;
+}> = ({ timeline, fileName, addToast }) => {
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -136,6 +138,7 @@ const ExportTab: React.FC<{
     if (!timeline || !fileName) return;
     setExporting(true);
     setError(null);
+    addToast('Export started...', 'info');
     try {
       const res = await fetch('http://localhost:3001/api/smart-export', {
         method: 'POST',
@@ -149,8 +152,10 @@ const ExportTab: React.FC<{
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       setExportResult(data);
+      addToast('Export complete!', 'success');
     } catch (e: any) {
       setError(e.message || 'Export failed');
+      addToast(e.message || 'Export failed', 'error');
     } finally {
       setExporting(false);
     }
@@ -268,16 +273,28 @@ export const EditorApp: React.FC = () => {
   const [manifest, setManifest] = useState<MetadataManifest | null>(null);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [timeline, setTimeline] = useState<Timeline | null>(null);
+  
+  const [toasts, setToasts] = useState<{ id: string; message: string; type: 'info' | 'success' | 'error' }[]>([]);
+
+  const addToast = (message: string, type: 'info' | 'success' | 'error' = 'info') => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 3000);
+  };
 
   const handleUploaded = (fileName: string, m: MetadataManifest) => {
     setUploadedFileName(fileName);
     setManifest(m);
+    addToast(`Analyzed ${fileName} successfully!`, 'success');
   };
 
   const handleGenerate = async () => {
     if (!manifest) return;
     setIsAnalyzing(true);
     setActiveTab('review');
+    addToast(`Generating edit for ${selectedYoutuber.name}...`, 'info');
     try {
       const res = await fetch('/api/generate-edit-deterministic', {
         method: 'POST',
@@ -286,7 +303,12 @@ export const EditorApp: React.FC = () => {
       });
       if (res.ok) {
         setTimeline(await res.json());
+        addToast('Edit generated successfully!', 'success');
+      } else {
+        addToast('Failed to generate edit.', 'error');
       }
+    } catch (e) {
+      addToast('Error generating edit.', 'error');
     } finally {
       setIsAnalyzing(false);
     }
@@ -301,15 +323,46 @@ export const EditorApp: React.FC = () => {
           onGenerate={handleGenerate}
           onUploaded={handleUploaded}
           manifest={manifest}
+          addToast={addToast}
         />
       );
       case 'review':  return <ReviewTab timeline={timeline} isGenerating={isAnalyzing} />;
-      case 'export':  return <ExportTab timeline={timeline} fileName={uploadedFileName} />;
+      case 'export':  return <ExportTab timeline={timeline} fileName={uploadedFileName} addToast={addToast} />;
     }
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden', position: 'relative' }}>
+      
+      <style>{`
+        @keyframes toast-in {
+          from { opacity: 0; transform: translate(-50%, 10px); }
+          to { opacity: 1; transform: translate(-50%, 0); }
+        }
+      `}</style>
+      
+      {/* Toast Container */}
+      <div style={{
+        position: 'fixed', bottom: 'calc(var(--bottom-nav-height, 60px) + 24px)', left: '50%', transform: 'translateX(-50%)',
+        display: 'flex', flexDirection: 'column', gap: 12, zIndex: 100, pointerEvents: 'none'
+      }}>
+        {toasts.map(t => (
+          <div key={t.id} style={{
+            background: 'var(--bg-elevated)',
+            border: `1px solid ${t.type === 'error' ? 'var(--danger)' : t.type === 'success' ? '#22c55e' : 'var(--border)'}`,
+            color: 'var(--text-primary)', padding: '10px 16px', borderRadius: 'var(--radius)',
+            fontSize: 13, boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+            display: 'flex', alignItems: 'center', gap: 10,
+            animation: 'toast-in 0.2s ease-out forwards',
+            pointerEvents: 'auto'
+          }}>
+            {t.type === 'success' && <span style={{ color: '#22c55e', fontSize: 16 }}>✓</span>}
+            {t.type === 'error' && <span style={{ color: 'var(--danger)', fontSize: 14 }}>✕</span>}
+            {t.type === 'info' && <span style={{ color: 'var(--text-secondary)', fontSize: 14 }}>ℹ</span>}
+            {t.message}
+          </div>
+        ))}
+      </div>
 
       <header style={{
         height: 'var(--header-height)',

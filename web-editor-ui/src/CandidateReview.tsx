@@ -360,6 +360,7 @@ export const CandidateReview: React.FC<CandidateReviewProps> = ({
                     ✕ Reject
                   </button>
                 </div>
+              </div>
             </>
           ) : (
             <div style={{ flex: 1 }} />

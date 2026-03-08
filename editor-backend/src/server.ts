@@ -29,10 +29,14 @@ app.use((_req, res, next) => {
   next();
 });
 
-app.use('/media', express.static(path.resolve(__dirname, '../../public')));
-
 const PUBLIC_DIR = path.resolve(__dirname, '../../public');
-if (!fs.existsSync(PUBLIC_DIR)) fs.mkdirSync(PUBLIC_DIR, { recursive: true });
+if (!fs.existsSync(PUBLIC_DIR)) {
+  fs.mkdirSync(PUBLIC_DIR, { recursive: true });
+  console.log('Created upload directory:', PUBLIC_DIR);
+}
+console.log('Upload directory:', PUBLIC_DIR);
+
+app.use('/media', express.static(PUBLIC_DIR));
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, PUBLIC_DIR),
@@ -91,21 +95,26 @@ app.get('/api/styles', (_req: Request, res: Response) => {
 
 app.post('/api/upload', (req: Request, res: Response) => {
   upload.single('video')(req, res, (err) => {
-    if (err) {
-      const status = err.message.startsWith('Unsupported') ? 415 : 400;
-      return res.status(status).json({ error: err.message });
+    try {
+      if (err) {
+        const status = err.message.startsWith('Unsupported') ? 415 : 400;
+        return res.status(status).json({ error: err.message });
+      }
+      const file = (req as any).file as Express.Multer.File | undefined;
+      if (!file) {
+        return res.status(400).json({ error: 'No file received. Use field name "video".' });
+      }
+      console.log(`Uploaded: ${file.filename} (${(file.size / 1024 / 1024).toFixed(1)} MB)`);
+      res.json({
+        fileName: file.filename,
+        originalName: file.originalname,
+        size: file.size,
+        path: `/media/${file.filename}`,
+      });
+    } catch (e) {
+      console.error('Upload handler error:', e);
+      res.status(500).json({ error: (e as Error).message });
     }
-    const file = (req as any).file as Express.Multer.File | undefined;
-    if (!file) {
-      return res.status(400).json({ error: 'No file received. Use field name "video".' });
-    }
-    console.log(`Uploaded: ${file.filename} (${(file.size / 1024 / 1024).toFixed(1)} MB)`);
-    res.json({
-      fileName: file.filename,
-      originalName: file.originalname,
-      size: file.size,
-      path: `/media/${file.filename}`,
-    });
   });
 });
 

@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "build:rust": "npm --workspace=rust-media-engine run build",
-    "dev:ui": "npm --workspace=web-editor-ui run dev",
+    "dev:ui": "npm --workspace=web-editor-ui run dev:app",
     "dev:backend": "npm --workspace=editor-backend run dev"
   }
 }

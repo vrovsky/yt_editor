@@ -15,6 +15,7 @@ export interface MetadataManifest {
 
 export interface UploadZoneProps {
   onReady: (fileName: string, manifest: MetadataManifest) => void;
+  addToast: (msg: string, type?: 'info' | 'success' | 'error') => void;
 }
 
 type Phase =
@@ -95,23 +96,36 @@ const IdleContent: React.FC<{ isDragging: boolean }> = ({ isDragging }) => (
   </div>
 );
 
-const ProgressBar: React.FC<{ value: number; label: string }> = ({ value, label }) => (
-  <div style={{ width: '100%', maxWidth: 280, textAlign: 'center' }}>
-    <div style={{
-      height: 2, background: 'var(--border)',
-      borderRadius: 1, overflow: 'hidden', marginBottom: 12,
-    }}>
+const GREEN = '#22c55e';
+
+const ProgressBar: React.FC<{
+  value: number;
+  label: string;
+  green?: boolean;
+  showCheckAt100?: boolean;
+}> = ({ value, label, green, showCheckAt100 }) => {
+  const barColor = green ? GREEN : 'var(--text-secondary)';
+  const isComplete = showCheckAt100 && value >= 100;
+  return (
+    <div style={{ width: '100%', maxWidth: 280, textAlign: 'center' }}>
       <div style={{
-        height: '100%', width: `${value}%`,
-        background: 'var(--text-secondary)',
-        transition: 'width 150ms ease',
-      }} />
+        height: 2, background: 'var(--border)',
+        borderRadius: 1, overflow: 'hidden', marginBottom: 12,
+      }}>
+        <div style={{
+          height: '100%', width: `${value}%`,
+          background: barColor,
+          transition: 'width 150ms ease',
+        }} />
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'between' }}>
+      <p style={{ fontSize: 12, color: isComplete ? barColor : 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+        {label}
+      </p>  
+      </div>
     </div>
-    <p style={{ fontSize: 12, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
-      {label}
-    </p>
-  </div>
-);
+  );
+};
 
 const ReadyContent: React.FC<{ fileName: string; manifest: MetadataManifest; onClear: () => void }> = ({
   fileName, manifest, onClear,
@@ -144,7 +158,7 @@ const ReadyContent: React.FC<{ fileName: string; manifest: MetadataManifest; onC
   </div>
 );
 
-export const UploadZone: React.FC<UploadZoneProps> = ({ onReady }) => {
+export const UploadZone: React.FC<UploadZoneProps> = ({ onReady, addToast }) => {
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -168,15 +182,22 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onReady }) => {
       );
 
       setPhase({ kind: 'analyzing', fileName });
+      addToast('Upload complete. Analyzing media...', 'info');
 
-      const manifest = await analyzeFile(fileName);
+      try {
+        const manifest = await analyzeFile(fileName);
+        setPhase({ kind: 'ready', fileName, manifest });
+        onReady(fileName, manifest);
+      } catch (analyzeErr) {
+        setPhase({ kind: 'error', message: (analyzeErr as Error).message });
+        addToast(`Analysis failed: ${(analyzeErr as Error).message}`, 'error');
+      }
 
-      setPhase({ kind: 'ready', fileName, manifest });
-      onReady(fileName, manifest);
     } catch (err) {
       setPhase({ kind: 'error', message: (err as Error).message });
+      addToast(`Upload failed: ${(err as Error).message}`, 'error');
     }
-  }, [onReady]);
+  }, [onReady, addToast]);
 
   const onDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -241,6 +262,8 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onReady }) => {
         <ProgressBar
           value={phase.progress}
           label={`Uploading… ${phase.progress}%`}
+          green
+          showCheckAt100
         />
       )}
 
