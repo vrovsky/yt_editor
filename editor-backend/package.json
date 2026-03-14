@@ -1,8 +1,10 @@
 {
   "name": "editor-backend",
   "version": "0.1.0",
+  "license": "MIT",
   "private": true,
   "dependencies": {
+    "@clerk/express": "^2.0.4",
     "dotenv": "^17.3.1",
     "express": "^4.18.2",
     "multer": "^1.4.5-lts.1",
