@@ -1,3 +1,5 @@
+Hack with Audacity Promthero track
+
 # AI Video Editor MVP (Transcript-Driven Rough Rust Based Video Cut Engine)
 
 ## Project Description
@@ -12,13 +14,13 @@ A full-stack monorepo application implementing a **Transcript-Driven Rough Cut**
 
 ```
 ┌──────────────────────────┐     ┌───────────────────────────┐     ┌──────────────────────────┐
-│  rust-media-engine        │     │   editor-backend           │     │   web-editor-ui           │
-│  (NAPI-RS / Rust)         │────▶│   (Express / TS)           │────▶│   (React / Remotion)      │
-│                           │     │                            │     │                           │
-│  • Whisper (candle)       │     │  • Editing Agent (rig)     │     │  • OTIOSequence.tsx       │
-│  • Scene detect (av-sc)   │     │  • Progressive Rhythm      │     │  • WebCodecsRenderer      │
-│  • Saliency (Burn)        │     │  • Continuous Thought       │     │  • Hardware-accel decode  │
-│  • Smart Export (ffmpeg)  │     │  • EditIQ energy min.       │     │  • Series.Sequence        │
+│  rust-media-engine       │     │   editor-backend          │     │   web-editor-ui           │
+│  (NAPI-RS / Rust)        │───▶│   (Express / TS)          │────▶│   (React / Remotion)      │
+│                          │     │                           │     │                           │
+│  • Whisper (candle)      │     │  • Editing Agent (rig)    │     │  • OTIOSequence.tsx       │
+│  • Scene detect (av-sc)  │     │  • Progressive Rhythm     │     │  • WebCodecsRenderer      │
+│  • Saliency (Burn)       │     │  • Continuous Thought     │     │  • Hardware-accel decode  │
+│  • Smart Export (ffmpeg) │     │  • EditIQ energy min.     │     │  • Series.Sequence        │
 └──────────────────────────┘     └───────────────────────────┘     └──────────────────────────┘
 ```
 
