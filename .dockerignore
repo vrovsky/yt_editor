@@ -1,0 +1,15 @@
+node_modules
+**/node_modules
+**/target
+**/dist
+.git
+.claude
+.vscode
+.idea
+data
+public/*.mp4
+public/*.mov
+public/*.webm
+*.node
+*.old.node
+*.log

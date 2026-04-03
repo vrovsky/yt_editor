@@ -4,12 +4,14 @@ import { YouTuberProfile, YOUTUBER_PROFILES } from './styleData';
 import { UploadZone, MetadataManifest } from './UploadZone';
 import CandidateReview from './CandidateReview';
 import { Timeline } from './otio';
+import { useEditorStore, type Tab } from './store/editorStore';
+import { HeaderUserButton, useCanExport } from './auth/AuthProvider';
+import { fetchJsonWithRetry } from './lib/fetchWithRetry';
 
-type Tab = 'preview' | 'review' | 'export';
 const TABS = [
-  { id: 'preview' as Tab,  label: 'Preview',  icon: '▶' },
-  { id: 'review'  as Tab,  label: 'Review',   icon: '✓' },
-  { id: 'export'  as Tab,  label: 'Export',   icon: '↗' },
+  { id: 'preview' as Tab, label: 'Preview', icon: '▶' },
+  { id: 'review' as Tab, label: 'Review', icon: '✓' },
+  { id: 'export' as Tab, label: 'Export', icon: '↗' },
 ];
 
 const Meta: React.FC<{ label: string; value: string }> = ({ label, value }) => (
@@ -47,7 +49,7 @@ const PreviewTab: React.FC<{
     <div style={{
       width: '100%', maxWidth: 600, alignSelf: 'center',
       background: 'var(--bg-surface)', border: '1px solid var(--border)',
-      borderRadius: 'var(--radius)',       padding: '14px 16px',
+      borderRadius: 'var(--radius)', padding: '14px 16px',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
         <div style={{
@@ -106,7 +108,7 @@ const ReviewTab: React.FC<{
         <div style={{ width: 32, height: 32, border: '3px solid var(--border)', borderTopColor: 'var(--text-secondary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
         <div style={{ fontSize: 14, color: 'var(--text-secondary)', fontWeight: 500 }}>Generating AI Edit...</div>
         <div style={{ width: '100%', maxWidth: 280, height: 3, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
-           <div style={{ width: '100%', height: '100%', background: 'var(--text-secondary)', animation: 'progress-indeterminate 1.5s ease-in-out infinite' }} />
+          <div style={{ width: '100%', height: '100%', background: 'var(--text-secondary)', animation: 'progress-indeterminate 1.5s ease-in-out infinite' }} />
         </div>
       </div>
     );
@@ -129,37 +131,93 @@ const ExportTab: React.FC<{
   timeline: Timeline | null;
   fileName: string | null;
   addToast: (msg: string, type?: 'info' | 'success' | 'error') => void;
-}> = ({ timeline, fileName, addToast }) => {
+  canExport: boolean;
+}> = ({ timeline, fileName, addToast, canExport }) => {
   const [exporting, setExporting] = useState(false);
-  const [exportResult, setExportResult] = useState<any>(null);
+  const [exportResult, setExportResult] = useState<{ url: string; speedupFactor?: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { addToast: storeAddToast, updateToast, removeToast } = useEditorStore();
 
   const handleExport = async () => {
     if (!timeline || !fileName) return;
+    if (!canExport) {
+      addToast('Upgrade to Pro or Enterprise to export videos.', 'error');
+      return;
+    }
     setExporting(true);
     setError(null);
-    addToast('Export started...', 'info');
+    const toastId = storeAddToast('Export started…', 'info', {
+      progress: 5,
+      sticky: true,
+    });
     try {
-      const res = await fetch('http://localhost:3001/api/smart-export', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          timeline,
-          sourceFile: fileName,
-          outputFile: `export_${fileName}`,
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
+      const { jobId } = await fetchJsonWithRetry<{ jobId: string }>(
+        '/api/smart-export-job',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            timeline,
+            sourceFile: fileName,
+            outputFile: `export_${fileName}`,
+          }),
+        },
+        { timeoutMs: 10_000 },
+      );
+
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const job = await fetchJsonWithRetry<{
+          id: string;
+          type: 'analyze' | 'generate' | 'export';
+          status: 'queued' | 'running' | 'success' | 'error';
+          label: string;
+          progress: number;
+          error?: string;
+        }>(`/api/jobs/${jobId}`, undefined, { timeoutMs: 15_000 });
+
+        updateToast(toastId, {
+          message: job.label,
+          progress: job.progress,
+        });
+
+        if (job.status === 'success') {
+          break;
+        }
+        if (job.status === 'error') {
+          updateToast(toastId, {
+            type: 'error',
+            message: job.error ?? job.label,
+            progress: 100,
+          });
+          throw new Error(job.error ?? 'Export failed');
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+
+      const data = await fetchJsonWithRetry<{ url: string; speedupFactor?: number }>(
+        `/api/smart-export-job/${jobId}/result`,
+        undefined,
+        { timeoutMs: 60_000 },
+      );
       setExportResult(data);
-      addToast('Export complete!', 'success');
-    } catch (e: any) {
-      setError(e.message || 'Export failed');
-      addToast(e.message || 'Export failed', 'error');
+      updateToast(toastId, {
+        type: 'success',
+        message: 'Export complete!',
+        progress: 100,
+      });
+      setTimeout(() => removeToast(toastId), 800);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Export failed';
+      setError(msg);
+      addToast(msg, 'error');
     } finally {
       setExporting(false);
     }
   };
+
+  const apiBase = import.meta.env.VITE_API_BASE_URL || '';
 
   if (!timeline || !fileName) {
     return (
@@ -175,29 +233,34 @@ const ExportTab: React.FC<{
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24 }}>
       <span style={{ fontSize: 28, color: 'var(--text-primary)' }}>↗</span>
       <h2 style={{ fontSize: 16, margin: 0, color: 'var(--text-primary)' }}>Smart Export</h2>
-      
+
       {exportResult ? (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
           <div style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Export Complete!</div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
             Speedup factor: {exportResult.speedupFactor?.toFixed(1)}x
           </div>
-          <a href={`http://localhost:3001${exportResult.url}`} download className="btn btn-action" style={{ textDecoration: 'none', marginTop: 8 }}>
+          <a href={`${apiBase}${exportResult.url}`} download className="btn btn-action" style={{ textDecoration: 'none', marginTop: 8 }}>
             Download Video
           </a>
         </div>
       ) : (
         <>
-          <button 
-            className="btn btn-action" 
-            onClick={handleExport} 
-            disabled={exporting}
+          {!canExport && (
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', maxWidth: 280 }}>
+              Upgrade to Pro or Enterprise to export videos.
+            </p>
+          )}
+          <button
+            className="btn btn-action"
+            onClick={handleExport}
+            disabled={exporting || !canExport}
             style={{ minWidth: 200, padding: '10px 20px', fontSize: 13 }}
           >
             {exporting ? '⏳ Exporting...' : 'Export Video'}
           </button>
           {error && <div style={{ color: '#ef4444', fontSize: 12, maxWidth: 300, textAlign: 'center' }}>{error}</div>}
-          
+
           <div style={{
             marginTop: 8, padding: '12px 14px',
             background: 'var(--bg-surface)', border: '1px solid var(--border)',
@@ -267,48 +330,99 @@ const BottomNav: React.FC<{ active: Tab; onSelect: (t: Tab) => void }> = ({ acti
 );
 
 export const EditorApp: React.FC = () => {
-  const [selectedYoutuber, setSelectedYoutuber] = useState<YouTuberProfile>(YOUTUBER_PROFILES[0]);
-  const [activeTab, setActiveTab] = useState<Tab>('preview');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [manifest, setManifest] = useState<MetadataManifest | null>(null);
-  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
-  const [timeline, setTimeline] = useState<Timeline | null>(null);
-  
-  const [toasts, setToasts] = useState<{ id: string; message: string; type: 'info' | 'success' | 'error' }[]>([]);
+  const {
+    selectedYoutuber,
+    activeTab,
+    isAnalyzing,
+    manifest,
+    uploadedFileName,
+    timeline,
+    toasts,
+    setSelectedYoutuber,
+    setActiveTab,
+    setIsAnalyzing,
+    setTimeline,
+    addToast,
+    updateToast,
+    removeToast,
+    handleUploaded,
+  } = useEditorStore();
 
-  const addToast = (message: string, type: 'info' | 'success' | 'error' = 'info') => {
-    const id = Math.random().toString(36).substring(2, 9);
-    setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 3000);
-  };
-
-  const handleUploaded = (fileName: string, m: MetadataManifest) => {
-    setUploadedFileName(fileName);
-    setManifest(m);
-    addToast(`Analyzed ${fileName} successfully!`, 'success');
-  };
+  const canExport = useCanExport();
+  const youtuber = selectedYoutuber ?? YOUTUBER_PROFILES[0];
 
   const handleGenerate = async () => {
-    if (!manifest) return;
-    setIsAnalyzing(true);
+    const state = useEditorStore.getState();
+    const { manifest: m, selectedYoutuber: yt } = state;
+    if (!m || !yt) return;
     setActiveTab('review');
-    addToast(`Generating edit for ${selectedYoutuber.name}...`, 'info');
+    setIsAnalyzing(true);
+
+    const toastId = addToast(
+      `Generating edit for ${yt.name}…`,
+      'info',
+      { progress: 5, sticky: true },
+    );
+
     try {
-      const res = await fetch('/api/generate-edit-deterministic', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ manifest, style: selectedYoutuber.id }),
-      });
-      if (res.ok) {
-        setTimeline(await res.json());
-        addToast('Edit generated successfully!', 'success');
-      } else {
-        addToast('Failed to generate edit.', 'error');
+      const { jobId } = await fetchJsonWithRetry<{ jobId: string }>(
+        '/api/generate-edit-deterministic-job',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ manifest: m, style: yt.id }),
+        },
+        { timeoutMs: 10_000 },
+      );
+
+      // poll job
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const job = await fetchJsonWithRetry<{
+          id: string;
+          type: 'analyze' | 'generate' | 'export';
+          status: 'queued' | 'running' | 'success' | 'error';
+          label: string;
+          progress: number;
+          error?: string;
+        }>(`/api/jobs/${jobId}`, undefined, { timeoutMs: 15_000 });
+
+        updateToast(toastId, {
+          message: job.label,
+          progress: job.progress,
+        });
+
+        if (job.status === 'success') {
+          break;
+        }
+        if (job.status === 'error') {
+          updateToast(toastId, {
+            type: 'error',
+            message: job.error ?? job.label,
+            progress: 100,
+          });
+          throw new Error(job.error ?? 'Edit generation failed');
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 1500));
       }
-    } catch (e) {
-      addToast('Error generating edit.', 'error');
+
+      const tl = await fetchJsonWithRetry<Timeline>(
+        `/api/generate-edit-deterministic-job/${jobId}/result`,
+        undefined,
+        { timeoutMs: 60_000 },
+      );
+
+      setTimeline(tl);
+      updateToast(toastId, {
+        type: 'success',
+        message: 'Edit generated successfully!',
+        progress: 100,
+      });
+      setTimeout(() => removeToast(toastId), 800);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to generate edit. Retrying may help.';
+      addToast(msg, 'error');
     } finally {
       setIsAnalyzing(false);
     }
@@ -316,35 +430,52 @@ export const EditorApp: React.FC = () => {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'preview': return (
-        <PreviewTab
-          youtuber={selectedYoutuber}
-          isAnalyzing={isAnalyzing}
-          onGenerate={handleGenerate}
-          onUploaded={handleUploaded}
-          manifest={manifest}
-          addToast={addToast}
-        />
-      );
-      case 'review':  return <ReviewTab timeline={timeline} isGenerating={isAnalyzing} />;
-      case 'export':  return <ExportTab timeline={timeline} fileName={uploadedFileName} addToast={addToast} />;
+      case 'preview':
+        return (
+          <PreviewTab
+            youtuber={youtuber}
+            isAnalyzing={isAnalyzing}
+            onGenerate={handleGenerate}
+            onUploaded={handleUploaded}
+            manifest={manifest}
+            addToast={addToast}
+          />
+        );
+      case 'review':
+        return <ReviewTab timeline={timeline} isGenerating={isAnalyzing} />;
+      case 'export':
+        return (
+          <ExportTab
+            timeline={timeline}
+            fileName={uploadedFileName}
+            addToast={addToast}
+            canExport={canExport}
+          />
+        );
     }
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden', position: 'relative' }}>
-      
       <style>{`
         @keyframes toast-in {
           from { opacity: 0; transform: translate(-50%, 10px); }
           to { opacity: 1; transform: translate(-50%, 0); }
         }
       `}</style>
-      
-      {/* Toast Container */}
+
       <div style={{
-        position: 'fixed', bottom: 'calc(var(--bottom-nav-height, 60px) + 24px)', left: '50%', transform: 'translateX(-50%)',
-        display: 'flex', flexDirection: 'column', gap: 12, zIndex: 100, pointerEvents: 'none'
+        position: 'fixed',
+        bottom: 'calc(var(--bottom-nav-height, 60px) + 24px)',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+        zIndex: 100,
+        pointerEvents: 'none',
+        width: '100%',
+        maxWidth: 420,
       }}>
         {toasts.map(t => (
           <div key={t.id} style={{
@@ -352,14 +483,35 @@ export const EditorApp: React.FC = () => {
             border: `1px solid ${t.type === 'error' ? 'var(--danger)' : t.type === 'success' ? '#22c55e' : 'var(--border)'}`,
             color: 'var(--text-primary)', padding: '10px 16px', borderRadius: 'var(--radius)',
             fontSize: 13, boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-            display: 'flex', alignItems: 'center', gap: 10,
+            display: 'flex', alignItems: 'center', gap: 10, flexDirection: 'column', alignSelf: 'center',
             animation: 'toast-in 0.2s ease-out forwards',
             pointerEvents: 'auto'
           }}>
-            {t.type === 'success' && <span style={{ color: '#22c55e', fontSize: 16 }}>✓</span>}
-            {t.type === 'error' && <span style={{ color: 'var(--danger)', fontSize: 14 }}>✕</span>}
-            {t.type === 'info' && <span style={{ color: 'var(--text-secondary)', fontSize: 14 }}>ℹ</span>}
-            {t.message}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, alignSelf: 'stretch' }}>
+              {t.type === 'success' && <span style={{ color: '#22c55e', fontSize: 16 }}>✓</span>}
+              {t.type === 'error' && <span style={{ color: 'var(--danger)', fontSize: 14 }}>✕</span>}
+              {t.type === 'info' && <span style={{ color: 'var(--text-secondary)', fontSize: 14 }}>ℹ</span>}
+              <span>{t.message}</span>
+            </div>
+            {typeof t.progress === 'number' && (
+              <div style={{ width: '100%', marginTop: 4 }}>
+                <div style={{ height: 3, borderRadius: 2, background: 'var(--border)', overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      height: '100%',
+                      width: `${Math.min(Math.max(t.progress, 0), 100)}%`,
+                      background:
+                        t.type === 'error'
+                          ? 'var(--danger)'
+                          : t.type === 'success'
+                          ? '#22c55e'
+                          : 'var(--text-secondary)',
+                      transition: 'width 160ms ease-out',
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -385,15 +537,16 @@ export const EditorApp: React.FC = () => {
 
         <div className="desktop-only" style={{ width: 1, height: 16, background: 'var(--border)', flexShrink: 0 }} />
 
-        {/* Style picker */}
-        <YoutuberDropdown selected={selectedYoutuber} onSelect={setSelectedYoutuber} />
+        <YoutuberDropdown selected={youtuber} onSelect={setSelectedYoutuber} />
 
         <div style={{ flex: 1 }} />
 
         <div className="desktop-only" style={{ display: 'flex', gap: 20, alignItems: 'center', paddingRight: 6 }}>
-          <Meta label="Pacing" value={selectedYoutuber.styleProfile.pacingType} />
-          <Meta label="Cuts/min" value={selectedYoutuber.cutDensityLabel} />
+          <Meta label="Pacing" value={youtuber.styleProfile.pacingType} />
+          <Meta label="Cuts/min" value={youtuber.cutDensityLabel} />
         </div>
+
+        <HeaderUserButton />
       </header>
 
       <div className="desktop-only" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

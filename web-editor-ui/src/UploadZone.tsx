@@ -1,4 +1,6 @@
 import React, { useCallback, useRef, useState } from 'react';
+import { fetchJsonWithRetry } from './lib/fetchWithRetry';
+import { useEditorStore } from './store/editorStore';
 
 export interface MetadataManifest {
   sourceFile: string;
@@ -62,17 +64,77 @@ function uploadFile(
   });
 }
 
-async function analyzeFile(fileName: string): Promise<MetadataManifest> {
-  const res = await fetch('/api/analyze-media', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filePath: fileName }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error ?? 'Analysis failed');
+interface AnalyzeJobStatus {
+  id: string;
+  type: 'analyze' | 'generate' | 'export';
+  status: 'queued' | 'running' | 'success' | 'error';
+  label: string;
+  progress: number;
+  error?: string;
+}
+
+async function analyzeFileWithJob(fileName: string): Promise<MetadataManifest> {
+  const { addToast, updateToast, removeToast } = useEditorStore.getState();
+
+  const { jobId } = await fetchJsonWithRetry<{ jobId: string }>(
+    '/api/analyze-media-job',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filePath: fileName }),
+    },
+    { timeoutMs: 10_000 },
+  );
+
+  const toastId = addToast(
+    'Analyzing media…',
+    'info',
+    { progress: 0, sticky: true },
+  );
+
+  // Poll job until completion
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const job = await fetchJsonWithRetry<AnalyzeJobStatus>(
+      `/api/jobs/${jobId}`,
+      undefined,
+      { timeoutMs: 15_000 },
+    );
+
+    updateToast(toastId, {
+      message: job.label,
+      progress: job.progress,
+    });
+
+    if (job.status === 'success') {
+      break;
+    }
+    if (job.status === 'error') {
+      updateToast(toastId, {
+        type: 'error',
+        message: job.error ?? job.label,
+        progress: 100,
+      });
+      throw new Error(job.error ?? 'Analysis failed');
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 1500));
   }
-  return res.json();
+
+  const manifest = await fetchJsonWithRetry<MetadataManifest>(
+    `/api/analyze-media-job/${jobId}/result`,
+    undefined,
+    { timeoutMs: 60_000 },
+  );
+
+  updateToast(toastId, {
+    type: 'success',
+    message: 'Analysis complete',
+    progress: 100,
+  });
+  setTimeout(() => removeToast(toastId), 800);
+
+  return manifest;
 }
 
 const IdleContent: React.FC<{ isDragging: boolean }> = ({ isDragging }) => (
@@ -185,7 +247,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onReady, addToast }) => 
       addToast('Upload complete. Analyzing media...', 'info');
 
       try {
-        const manifest = await analyzeFile(fileName);
+        const manifest = await analyzeFileWithJob(fileName);
         setPhase({ kind: 'ready', fileName, manifest });
         onReady(fileName, manifest);
       } catch (analyzeErr) {

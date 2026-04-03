@@ -10,6 +10,8 @@
   "scripts": {
     "build:rust": "npm --workspace=rust-media-engine run build",
     "dev:ui": "npm --workspace=web-editor-ui run dev:app",
-    "dev:backend": "npm --workspace=editor-backend run dev"
+    "dev:backend": "npm --workspace=editor-backend run dev",
+    "test": "npm --workspace=editor-backend run test",
+    "test:backend": "npm --workspace=editor-backend run test"
   }
 }

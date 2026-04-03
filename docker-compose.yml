@@ -1,0 +1,16 @@
+services:
+  editor:
+    build: .
+    ports:
+      - "${PORT:-3001}:3001"
+    volumes:
+      - ./data:/app/data
+      - ./uploads:/app/public
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - CORS_ORIGIN=${CORS_ORIGIN:-*}
+    restart: unless-stopped

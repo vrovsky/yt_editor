@@ -279,6 +279,148 @@ function applyContinuousThought(
   return selected;
 }
 
+function applySlowBuild(
+  candidateCuts: CandidateCut[],
+  _manifest: MetadataManifest,
+  profile: StyleProfile,
+): CandidateCut[] {
+  const bodyMinMs = (profile.bodyOverrides?.minShotDurationSeconds ?? 4) * 1000;
+  const bodyMaxMs = (profile.bodyOverrides?.maxShotDurationSeconds ?? 8) * 1000;
+  const targetIntervalMs = (60 * 1000) / profile.cutDensityPerMinute;
+
+  // Only accept sentence-aligned and scene boundary cuts
+  const allowed = candidateCuts.filter(
+    (c) =>
+      c.reason === 'sentence_boundary' ||
+      c.reason === 'sentence_start' ||
+      c.reason === 'scene_change',
+  );
+
+  const selected: CandidateCut[] = [];
+  let lastCutMs = 0;
+
+  for (const cut of allowed) {
+    const timeSinceLastCut = cut.timestampMs - lastCutMs;
+
+    if (timeSinceLastCut < bodyMinMs) continue;
+
+    // Strict energy threshold — only accept very clean cuts
+    if (cut.editIQEnergy !== undefined && cut.editIQEnergy >= 0.2) continue;
+
+    // Scene boundaries get priority even below target interval
+    const isScene = cut.reason === 'scene_change';
+    const minRequired = isScene ? bodyMinMs : Math.max(bodyMinMs, targetIntervalMs * 0.8);
+
+    if (timeSinceLastCut >= minRequired) {
+      selected.push(cut);
+      lastCutMs = cut.timestampMs;
+    }
+  }
+
+  return selected;
+}
+
+function applyChaotic(
+  candidateCuts: CandidateCut[],
+  _manifest: MetadataManifest,
+  profile: StyleProfile,
+): CandidateCut[] {
+  const minMs = (profile.bodyOverrides?.minShotDurationSeconds ?? 1) * 1000;
+  const maxMs = (profile.bodyOverrides?.maxShotDurationSeconds ?? 3) * 1000;
+
+  const selected: CandidateCut[] = [];
+  let lastCutMs = 0;
+
+  for (const cut of candidateCuts) {
+    const timeSinceLastCut = cut.timestampMs - lastCutMs;
+
+    if (timeSinceLastCut < minMs) continue;
+
+    // Accept nearly everything — chaotic ignores energy
+    selected.push(cut);
+    lastCutMs = cut.timestampMs;
+  }
+
+  // Force-insert cuts if any gap exceeds maxMs
+  const withForced: CandidateCut[] = [];
+  let prevMs = 0;
+  for (const cut of selected) {
+    // Fill gaps larger than maxMs with intermediate cuts from the original candidates
+    if (cut.timestampMs - prevMs > maxMs) {
+      const fillers = candidateCuts.filter(
+        (c) => c.timestampMs > prevMs + minMs && c.timestampMs < cut.timestampMs - minMs,
+      );
+      for (const f of fillers) {
+        if (f.timestampMs - prevMs >= minMs) {
+          withForced.push(f);
+          prevMs = f.timestampMs;
+        }
+      }
+    }
+    if (cut.timestampMs - prevMs >= minMs) {
+      withForced.push(cut);
+      prevMs = cut.timestampMs;
+    }
+  }
+
+  return withForced;
+}
+
+function applyNarrativeArc(
+  candidateCuts: CandidateCut[],
+  manifest: MetadataManifest,
+  profile: StyleProfile,
+): CandidateCut[] {
+  const totalMs = manifest.durationMs;
+  const baseDensity = profile.cutDensityPerMinute;
+  const bodyMinMs = (profile.bodyOverrides?.minShotDurationSeconds ?? 5) * 1000;
+
+  // Act boundaries as fractions of total duration
+  const acts = [
+    { start: 0, end: 0.25, densityMul: 0.6, energyThreshold: 0.15, label: 'setup' },
+    { start: 0.25, end: 0.75, densityMul: 1.0, energyThreshold: 0.3, label: 'development' },
+    { start: 0.75, end: 0.90, densityMul: 1.4, energyThreshold: 0.5, label: 'climax' },
+    { start: 0.90, end: 1.0, densityMul: 0.6, energyThreshold: 0.15, label: 'resolution' },
+  ];
+
+  function getAct(timestampMs: number) {
+    const progress = timestampMs / totalMs;
+    return acts.find((a) => progress >= a.start && progress < a.end) ?? acts[acts.length - 1];
+  }
+
+  const selected: CandidateCut[] = [];
+  let lastCutMs = 0;
+
+  for (const cut of candidateCuts) {
+    const act = getAct(cut.timestampMs);
+    const actDensity = baseDensity * act.densityMul;
+    const targetIntervalMs = (60 * 1000) / actDensity;
+    const timeSinceLastCut = cut.timestampMs - lastCutMs;
+
+    const minInterval = Math.max(bodyMinMs, targetIntervalMs * 0.7);
+
+    if (timeSinceLastCut < minInterval) continue;
+
+    // Energy threshold varies by act — stricter in setup/resolution, relaxed in climax
+    if (cut.editIQEnergy !== undefined && cut.editIQEnergy >= act.energyThreshold) continue;
+
+    // In setup and resolution, prefer sentence-aligned cuts
+    if (
+      (act.label === 'setup' || act.label === 'resolution') &&
+      cut.reason !== 'sentence_boundary' &&
+      cut.reason !== 'sentence_start' &&
+      cut.reason !== 'scene_change'
+    ) {
+      continue;
+    }
+
+    selected.push(cut);
+    lastCutMs = cut.timestampMs;
+  }
+
+  return selected;
+}
+
 export class EditingAgent {
   private llm: LLMClient;
 
@@ -325,8 +467,8 @@ export class EditingAgent {
       processed.push({
         segment: seg,
         keep: true,
-        adjustedStartMs: seg.startMs - cumulativeRemovedMs,
-        adjustedEndMs: seg.endMs - cumulativeRemovedMs,
+        adjustedStartMs: Math.max(0, seg.startMs - cumulativeRemovedMs),
+        adjustedEndMs: Math.max(0, seg.endMs - cumulativeRemovedMs),
       });
 
       const intraSegmentPauses = silentPauses.filter(
@@ -440,6 +582,12 @@ export class EditingAgent {
         return applyProgressiveRhythm(candidateCuts, manifest, profile);
       case 'Continuous Thought':
         return applyContinuousThought(candidateCuts, manifest, profile);
+      case 'Slow Build':
+        return applySlowBuild(candidateCuts, manifest, profile);
+      case 'Chaotic':
+        return applyChaotic(candidateCuts, manifest, profile);
+      case 'Narrative Arc':
+        return applyNarrativeArc(candidateCuts, manifest, profile);
       default:
         return this.genericCutSelection(candidateCuts, manifest, profile);
     }

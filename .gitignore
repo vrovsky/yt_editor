@@ -1,0 +1,107 @@
+# ─── Logs ────────────────────────────────────────────────────────────
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Diagnostic reports (https://nodejs.org/api/report.html)
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# ─── Runtime data ────────────────────────────────────────────────────
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# ─── Test / Coverage ────────────────────────────────────────────────
+lib-cov
+coverage
+*.lcov
+.nyc_output
+
+# ─── Dependency directories ─────────────────────────────────────────
+node_modules/
+**/node_modules/
+jspm_packages/
+bower_components/
+
+# ─── TypeScript ──────────────────────────────────────────────────────
+*.tsbuildinfo
+typings/
+dist/
+
+# ─── Package manager caches ─────────────────────────────────────────
+.npm
+.eslintcache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+.yarn-integrity
+*.tgz
+
+# ─── REPL history ───────────────────────────────────────────────────
+.node_repl_history
+
+# ─── dotenv / secrets ───────────────────────────────────────────────
+.env
+.env.test
+.env.local
+.env.*.local
+
+# ─── Framework build output ─────────────────────────────────────────
+.next
+.nuxt
+.cache/
+.vuepress/dist
+.serverless/
+.fusebox/
+.dynamodb/
+out/
+
+# ─── Rust / NAPI ────────────────────────────────────────────────────
+# Cargo build output (keep Cargo.lock for reproducible builds)
+target/
+**/target/
+**/*.rs.bk
+
+# NAPI-RS native addon binaries (platform-specific build output)
+*.node
+*.old.node
+rust-media-engine/index.d.ts
+
+# ─── Uploaded media (runtime data, not source) ──────────────────────
+public/
+
+# ─── Build / tooling ────────────────────────────────────────────────
+build_log.txt
+build/Release
+.turbo
+.vite
+.lock-wscript
+
+# ─── Remotion ────────────────────────────────────────────────────────
+out/
+
+# ─── OS metadata ────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+nul
+NUL
+ehthumbs.db
+
+# ─── IDE / editors ──────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# ─── Claude Code ─────────────────────────────────────────────────────
+.claude/
