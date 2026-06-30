@@ -5,7 +5,7 @@ import { RemotionTimeline } from './RemotionTimeline';
 import { Timeline, timelineDurationInFrames } from './otio';
 
 const exampleTimeline: Timeline = {
-  name: 'MrBeast Style Rough Cut',
+  name: 'High-Energy Rough Cut',
   globalStartTime: { value: 0, rate: 30 },
   tracks: [
     {

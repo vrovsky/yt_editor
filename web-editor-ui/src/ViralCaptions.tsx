@@ -11,7 +11,7 @@ import { TranscriptSegment, TranscriptWord } from './otio';
 
 export interface ViralCaptionsProps {
   transcript: TranscriptSegment[];
-  style?: 'mrbeast' | 'neistat' | 'minimal';
+  style?: 'bold' | 'clean' | 'minimal';
   backgroundOpacity?: number;
 }
 
@@ -40,7 +40,7 @@ function formatTime(ms: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-const MrBeastCaption: React.FC<{
+const BoldCaption: React.FC<{
   activeWord: TranscriptWord | null;
   segmentText: string;
   isActive: boolean;
@@ -78,7 +78,7 @@ const MrBeastCaption: React.FC<{
   );
 };
 
-const CaseyCaption: React.FC<{
+const CleanCaption: React.FC<{
   activeWord: TranscriptWord | null;
   segmentText: string;
   isActive: boolean;
@@ -153,7 +153,7 @@ const MinimalCaption: React.FC<{
 
 export const ViralCaptions: React.FC<ViralCaptionsProps> = ({
   transcript,
-  style = 'mrbeast',
+  style = 'bold',
   backgroundOpacity = 0.75,
 }) => {
   const frame = useCurrentFrame();
@@ -188,17 +188,17 @@ export const ViralCaptions: React.FC<ViralCaptionsProps> = ({
 
   const renderCaption = () => {
     switch (style) {
-      case 'mrbeast':
+      case 'bold':
         return (
-          <MrBeastCaption
+          <BoldCaption
             activeWord={activeWord}
             segmentText={segmentText}
             isActive={isActive}
           />
         );
-      case 'neistat':
+      case 'clean':
         return (
-          <CaseyCaption
+          <CleanCaption
             activeWord={activeWord}
             segmentText={segmentText}
             isActive={isActive}

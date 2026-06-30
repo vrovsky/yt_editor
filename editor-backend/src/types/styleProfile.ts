@@ -6,6 +6,7 @@ export type PacingType =
   | 'Narrative Arc';
 
 export interface StyleProfile {
+  /** Generic, descriptive archetype name. Never references a real person. */
   name: string;
   description: string;
   cutDensityPerMinute: number;
@@ -37,11 +38,17 @@ export interface StyleProfile {
   };
 }
 
-export const MRBEAST_PROFILE: StyleProfile = {
-  name: 'MrBeast',
+// ─────────────────────────────────────────────────────────────────────
+// Style presets are generic editing-pacing archetypes. They are NOT
+// affiliated with, endorsed by, or representative of any individual
+// creator. Names describe the editing technique only.
+// ─────────────────────────────────────────────────────────────────────
+
+export const HIGH_ENERGY_HOOK_PROFILE: StyleProfile = {
+  name: 'High-Energy Hook',
   description:
-    'Rhythm-Locked: 38 cuts/min in hook aligned to musical transients, ' +
-    'widening to 20-40s shots in body.',
+    'Rhythm-locked: ~38 cuts/min in the hook aligned to musical transients, ' +
+    'widening to 20-40s shots in the body.',
   cutDensityPerMinute: 18,
   visualResetIntervalSeconds: 15,
   pacingType: 'Progressive Rhythm',
@@ -69,10 +76,10 @@ export const MRBEAST_PROFILE: StyleProfile = {
   },
 };
 
-export const CASEY_NEISTAT_PROFILE: StyleProfile = {
-  name: 'Casey Neistat',
+export const CONTINUOUS_VLOG_PROFILE: StyleProfile = {
+  name: 'Continuous Vlog',
   description:
-    'Continuous Thought: mid-sentence location jumps, associative B-roll, ' +
+    'Continuous thought: mid-sentence location jumps, associative B-roll, ' +
     'natural cadence preserved.',
   cutDensityPerMinute: 12,
   visualResetIntervalSeconds: 20,
@@ -98,10 +105,10 @@ export const CASEY_NEISTAT_PROFILE: StyleProfile = {
   },
 };
 
-export const MKBHD_PROFILE: StyleProfile = {
-  name: 'MKBHD',
+export const CLEAN_TECH_REVIEW_PROFILE: StyleProfile = {
+  name: 'Clean Tech Review',
   description:
-    'Slow Build: clean sentence-aligned cuts, informative pacing, strong visual consistency.',
+    'Slow build: clean sentence-aligned cuts, informative pacing, strong visual consistency.',
   cutDensityPerMinute: 10,
   visualResetIntervalSeconds: 30,
   pacingType: 'Slow Build',
@@ -122,8 +129,8 @@ export const MKBHD_PROFILE: StyleProfile = {
   },
 };
 
-export const DAVID_DOBRIK_PROFILE: StyleProfile = {
-  name: 'David Dobrik',
+export const RAPID_REACTION_PROFILE: StyleProfile = {
+  name: 'Rapid Reaction',
   description:
     'Chaotic: ultra-fast cuts, no breathing room, pure reaction-to-reaction editing.',
   cutDensityPerMinute: 60,
@@ -145,8 +152,8 @@ export const DAVID_DOBRIK_PROFILE: StyleProfile = {
   },
 };
 
-export const PETER_MCKINNON_PROFILE: StyleProfile = {
-  name: 'Peter McKinnon',
+export const CINEMATIC_VLOG_PROFILE: StyleProfile = {
+  name: 'Cinematic Vlog',
   description:
     'Cinematic vlog with whip pans, match cuts, and carefully timed beat-aligned transitions.',
   cutDensityPerMinute: 15,
@@ -169,8 +176,8 @@ export const PETER_MCKINNON_PROFILE: StyleProfile = {
   },
 };
 
-export const LINUS_TECH_TIPS_PROFILE: StyleProfile = {
-  name: 'Linus Tech Tips',
+export const FAST_INFORMATIVE_PROFILE: StyleProfile = {
+  name: 'Fast Informative',
   description:
     'Fast informative cuts with B-roll focus on the product being demonstrated.',
   cutDensityPerMinute: 20,
@@ -192,8 +199,8 @@ export const LINUS_TECH_TIPS_PROFILE: StyleProfile = {
   },
 };
 
-export const YES_THEORY_PROFILE: StyleProfile = {
-  name: 'Yes Theory',
+export const NARRATIVE_ADVENTURE_PROFILE: StyleProfile = {
+  name: 'Narrative Adventure',
   description:
     'Adventure narrative with emotional beats and long narrative segments building to a climax.',
   cutDensityPerMinute: 20,
@@ -216,8 +223,8 @@ export const YES_THEORY_PROFILE: StyleProfile = {
   },
 };
 
-export const VLOG_BROTHERS_PROFILE: StyleProfile = {
-  name: 'Vlog Brothers',
+export const LONG_FORM_ESSAY_PROFILE: StyleProfile = {
+  name: 'Long-Form Essay',
   description:
     'Slow intellectual narrative with long takes and minimal B-roll. Story over aesthetics.',
   cutDensityPerMinute: 8,
@@ -240,15 +247,18 @@ export const VLOG_BROTHERS_PROFILE: StyleProfile = {
   },
 };
 
+/**
+ * Keyed by stable, generic preset id. These ids form the public API
+ * contract with the frontend (which sends the selected preset id as
+ * the `style` field). No id references a real person.
+ */
 export const STYLE_PROFILES: Record<string, StyleProfile> = {
-  mrbeast: MRBEAST_PROFILE,
-  'casey neistat': CASEY_NEISTAT_PROFILE,
-  casey: CASEY_NEISTAT_PROFILE,
-  mkbhd: MKBHD_PROFILE,
-  'david dobrik': DAVID_DOBRIK_PROFILE,
-  'peter mckinnon': PETER_MCKINNON_PROFILE,
-  'linus tech tips': LINUS_TECH_TIPS_PROFILE,
-  linus: LINUS_TECH_TIPS_PROFILE,
-  'yes theory': YES_THEORY_PROFILE,
-  'vlog brothers': VLOG_BROTHERS_PROFILE,
+  'high-energy-hook': HIGH_ENERGY_HOOK_PROFILE,
+  'continuous-vlog': CONTINUOUS_VLOG_PROFILE,
+  'clean-tech-review': CLEAN_TECH_REVIEW_PROFILE,
+  'rapid-reaction': RAPID_REACTION_PROFILE,
+  'cinematic-vlog': CINEMATIC_VLOG_PROFILE,
+  'fast-informative': FAST_INFORMATIVE_PROFILE,
+  'narrative-adventure': NARRATIVE_ADVENTURE_PROFILE,
+  'long-form-essay': LONG_FORM_ESSAY_PROFILE,
 };

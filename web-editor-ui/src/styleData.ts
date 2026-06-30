@@ -1,8 +1,11 @@
 /**
- * styleData.ts – YouTuber Style Profiles for the AI Video Editor
+ * styleData.ts – Editing-style archetypes for the AI Video Editor.
  *
- * Each profile contains visual metadata (for the UI)
- * and a StyleProfile config (for the Editing Agent).
+ * Each profile is a generic editing-pacing archetype. Profiles are NOT
+ * affiliated with, endorsed by, or representative of any individual
+ * creator. The `id` is the public API contract sent to the backend as
+ * the `style` field and must stay in sync with STYLE_PROFILES keys in
+ * editor-backend/src/types/styleProfile.ts.
  */
 
 export type PacingType =
@@ -47,9 +50,9 @@ export interface StyleProfile {
 }
 
 export interface YouTuberProfile {
+  /** Stable preset id — sent to the backend as the `style` field. */
   id: string;
   name: string;
-  realName: string;
   avatar: string;
   accentColor: string;
   gradientFrom: string;
@@ -62,9 +65,8 @@ export interface YouTuberProfile {
 
 export const YOUTUBER_PROFILES: YouTuberProfile[] = [
   {
-    id: 'mrbeast',
-    name: 'MrBeast',
-    realName: 'Jimmy Donaldson',
+    id: 'high-energy-hook',
+    name: 'High-Energy Hook',
     avatar: '🔥',
     accentColor: '#f59e0b',
     gradientFrom: '#f59e0b',
@@ -73,8 +75,8 @@ export const YOUTUBER_PROFILES: YouTuberProfile[] = [
     description: 'Aggressive cutting — 38 cuts/min in the hook, 20–40s narrative segments in the body. Every second is earned.',
     cutDensityLabel: '38/min hook · 18/min body',
     styleProfile: {
-      name: 'MrBeast',
-      description: 'Rhythm-Locked: 38 cuts/min in hook aligned to musical transients, widening to 20-40s shots in body.',
+      name: 'High-Energy Hook',
+      description: 'Rhythm-locked: ~38 cuts/min in hook aligned to musical transients, widening to 20-40s shots in body.',
       cutDensityPerMinute: 18,
       visualResetIntervalSeconds: 15,
       pacingType: 'Progressive Rhythm',
@@ -92,9 +94,8 @@ export const YOUTUBER_PROFILES: YouTuberProfile[] = [
     },
   },
   {
-    id: 'casey',
-    name: 'Casey Neistat',
-    realName: 'Casey Neistat',
+    id: 'continuous-vlog',
+    name: 'Continuous Vlog',
     avatar: '🎥',
     accentColor: '#3b82f6',
     gradientFrom: '#3b82f6',
@@ -103,7 +104,7 @@ export const YOUTUBER_PROFILES: YouTuberProfile[] = [
     description: 'Continuous thought — cuts in the middle of sentences, B-roll breaks the location, natural 12/min rhythm.',
     cutDensityLabel: '12/min · natural cadence',
     styleProfile: {
-      name: 'Casey Neistat',
+      name: 'Continuous Vlog',
       description: 'Continuous Thought: mid-sentence location jumps, associative B-roll, natural cadence preserved.',
       cutDensityPerMinute: 12,
       visualResetIntervalSeconds: 20,
@@ -123,9 +124,8 @@ export const YOUTUBER_PROFILES: YouTuberProfile[] = [
     },
   },
   {
-    id: 'mkbhd',
-    name: 'MKBHD',
-    realName: 'Marques Brownlee',
+    id: 'clean-tech-review',
+    name: 'Clean Tech Review',
     avatar: '📱',
     accentColor: '#10b981',
     gradientFrom: '#10b981',
@@ -134,7 +134,7 @@ export const YOUTUBER_PROFILES: YouTuberProfile[] = [
     description: 'Slow narrative with clean transitions. Each clip is a complete sentence. 10 cuts/min, 4–8s per clip.',
     cutDensityLabel: '10/min · 4–8s per clip',
     styleProfile: {
-      name: 'MKBHD',
+      name: 'Clean Tech Review',
       description: 'Slow Build: clean sentence-aligned cuts, informative pacing, strong visual consistency.',
       cutDensityPerMinute: 10,
       visualResetIntervalSeconds: 30,
@@ -153,18 +153,17 @@ export const YOUTUBER_PROFILES: YouTuberProfile[] = [
     },
   },
   {
-    id: 'david-dobrik',
-    name: 'David Dobrik',
-    realName: 'David Dobrik',
+    id: 'rapid-reaction',
+    name: 'Rapid Reaction',
     avatar: '⚡',
     accentColor: '#ef4444',
     gradientFrom: '#ef4444',
     gradientTo: '#f97316',
-    tags: ['Chaotic', 'Ultra-Fast', '4:20 Format'],
+    tags: ['Chaotic', 'Ultra-Fast', 'Reaction'],
     description: 'Chaotic editing without pauses — 60+ cuts/min. Every clip is a reaction or a punch line.',
     cutDensityLabel: '60+/min · 1–2s per clip',
     styleProfile: {
-      name: 'David Dobrik',
+      name: 'Rapid Reaction',
       description: 'Chaotic: ultra-fast cuts, no breathing room, pure reaction-to-reaction editing.',
       cutDensityPerMinute: 60,
       visualResetIntervalSeconds: 5,
@@ -182,9 +181,8 @@ export const YOUTUBER_PROFILES: YouTuberProfile[] = [
     },
   },
   {
-    id: 'peter-mckinnon',
-    name: 'Peter McKinnon',
-    realName: 'Peter McKinnon',
+    id: 'cinematic-vlog',
+    name: 'Cinematic Vlog',
     avatar: '🎞',
     accentColor: '#ec4899',
     gradientFrom: '#ec4899',
@@ -193,7 +191,7 @@ export const YOUTUBER_PROFILES: YouTuberProfile[] = [
     description: 'Cinematic transitions, whip-pan location changes, carefully calibrated rhythm at 15 cuts/min.',
     cutDensityLabel: '15/min · cinematic pacing',
     styleProfile: {
-      name: 'Peter McKinnon',
+      name: 'Cinematic Vlog',
       description: 'Cinematic vlog with whip pans, match cuts, and carefully timed beat-aligned transitions.',
       cutDensityPerMinute: 15,
       visualResetIntervalSeconds: 20,
@@ -212,9 +210,8 @@ export const YOUTUBER_PROFILES: YouTuberProfile[] = [
     },
   },
   {
-    id: 'linus',
-    name: 'Linus Tech Tips',
-    realName: 'Linus Sebastian',
+    id: 'fast-informative',
+    name: 'Fast Informative',
     avatar: '🖥',
     accentColor: '#6366f1',
     gradientFrom: '#6366f1',
@@ -223,7 +220,7 @@ export const YOUTUBER_PROFILES: YouTuberProfile[] = [
     description: 'Fast but structured editing for tech content. 20 cuts/min, emphasis on product demonstration.',
     cutDensityLabel: '20/min · demo-first',
     styleProfile: {
-      name: 'Linus Tech Tips',
+      name: 'Fast Informative',
       description: 'Fast informative cuts with B-roll focus on the product being demonstrated.',
       cutDensityPerMinute: 20,
       visualResetIntervalSeconds: 12,
@@ -241,9 +238,8 @@ export const YOUTUBER_PROFILES: YouTuberProfile[] = [
     },
   },
   {
-    id: 'yes-theory',
-    name: 'Yes Theory',
-    realName: 'Yes Theory',
+    id: 'narrative-adventure',
+    name: 'Narrative Adventure',
     avatar: '🌍',
     accentColor: '#14b8a6',
     gradientFrom: '#14b8a6',
@@ -252,7 +248,7 @@ export const YOUTUBER_PROFILES: YouTuberProfile[] = [
     description: 'Adventure narrative editing. Emotional beats, 20 cuts/min, long narrative segments that build to a peak.',
     cutDensityLabel: '20/min · narrative arc',
     styleProfile: {
-      name: 'Yes Theory',
+      name: 'Narrative Adventure',
       description: 'Adventure narrative with emotional beats and long narrative segments building to a climax.',
       cutDensityPerMinute: 20,
       visualResetIntervalSeconds: 25,
@@ -271,9 +267,8 @@ export const YOUTUBER_PROFILES: YouTuberProfile[] = [
     },
   },
   {
-    id: 'vlog-brothers',
-    name: 'Vlog Brothers',
-    realName: 'Hank & John Green',
+    id: 'long-form-essay',
+    name: 'Long-Form Essay',
     avatar: '📚',
     accentColor: '#8b5cf6',
     gradientFrom: '#8b5cf6',
@@ -282,7 +277,7 @@ export const YOUTUBER_PROFILES: YouTuberProfile[] = [
     description: 'Slow intellectual narrative. 8 cuts/min, long uninterrupted thought segments with no B-roll.',
     cutDensityLabel: '8/min · slow narrative',
     styleProfile: {
-      name: 'Vlog Brothers',
+      name: 'Long-Form Essay',
       description: 'Slow intellectual narrative with long takes and minimal B-roll. Story over aesthetics.',
       cutDensityPerMinute: 8,
       visualResetIntervalSeconds: 45,
