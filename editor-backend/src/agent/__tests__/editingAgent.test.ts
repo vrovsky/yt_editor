@@ -1,14 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { EditingAgent, LLMClient } from '../editingAgent';
 import {
-  MRBEAST_PROFILE,
-  CASEY_NEISTAT_PROFILE,
-  MKBHD_PROFILE,
-  DAVID_DOBRIK_PROFILE,
-  PETER_MCKINNON_PROFILE,
-  LINUS_TECH_TIPS_PROFILE,
-  YES_THEORY_PROFILE,
-  VLOG_BROTHERS_PROFILE,
+  HIGH_ENERGY_HOOK_PROFILE,
+  CONTINUOUS_VLOG_PROFILE,
+  CLEAN_TECH_REVIEW_PROFILE,
+  RAPID_REACTION_PROFILE,
+  CINEMATIC_VLOG_PROFILE,
+  FAST_INFORMATIVE_PROFILE,
+  NARRATIVE_ADVENTURE_PROFILE,
+  LONG_FORM_ESSAY_PROFILE,
   STYLE_PROFILES,
   StyleProfile,
 } from '../../types/styleProfile';
@@ -103,7 +103,7 @@ describe('EditingAgent.applySilentCuts', () => {
   it('keep mode returns original timestamps', () => {
     const manifest = makeManifest();
     const keepProfile: StyleProfile = {
-      ...MRBEAST_PROFILE,
+      ...HIGH_ENERGY_HOOK_PROFILE,
       silentCutMode: 'keep',
     };
     const result = agent.applySilentCuts(manifest, keepProfile);
@@ -118,7 +118,7 @@ describe('EditingAgent.applySilentCuts', () => {
   it('remove mode shifts timestamps by removed pause duration', () => {
     const manifest = makeManifest();
     const removeProfile: StyleProfile = {
-      ...MRBEAST_PROFILE,
+      ...HIGH_ENERGY_HOOK_PROFILE,
       silentCutMode: 'remove',
       maxSilenceMs: 0,
     };
@@ -136,7 +136,7 @@ describe('EditingAgent.applySilentCuts', () => {
   it('shorten mode only removes excess beyond maxSilenceMs', () => {
     const manifest = makeManifest();
     const shortenProfile: StyleProfile = {
-      ...CASEY_NEISTAT_PROFILE,
+      ...CONTINUOUS_VLOG_PROFILE,
       silentCutMode: 'shorten',
       maxSilenceMs: 500,
     };
@@ -154,7 +154,7 @@ describe('EditingAgent.applySilentCuts', () => {
       ],
     });
     const removeProfile: StyleProfile = {
-      ...MRBEAST_PROFILE,
+      ...HIGH_ENERGY_HOOK_PROFILE,
       silentCutMode: 'remove',
     };
     const result = agent.applySilentCuts(manifest, removeProfile);
@@ -172,14 +172,14 @@ describe('EditingAgent.buildCandidateCuts', () => {
 
   it('produces cuts from scene changes', () => {
     const manifest = makeManifest();
-    const cuts = agent.buildCandidateCuts(manifest, MRBEAST_PROFILE);
+    const cuts = agent.buildCandidateCuts(manifest, HIGH_ENERGY_HOOK_PROFILE);
     const sceneCuts = cuts.filter(c => c.reason === 'scene_change');
     expect(sceneCuts.length).toBeGreaterThan(0);
   });
 
   it('produces cuts from sentence boundaries', () => {
     const manifest = makeManifest();
-    const cuts = agent.buildCandidateCuts(manifest, MRBEAST_PROFILE);
+    const cuts = agent.buildCandidateCuts(manifest, HIGH_ENERGY_HOOK_PROFILE);
     const sentenceCuts = cuts.filter(c => c.reason === 'sentence_boundary');
     expect(sentenceCuts.length).toBeGreaterThan(0);
   });
@@ -197,28 +197,28 @@ describe('EditingAgent.buildCandidateCuts', () => {
       sceneChanges: [],
       saliencyMap: [],
     });
-    const cuts = agent.buildCandidateCuts(manifest, MRBEAST_PROFILE);
+    const cuts = agent.buildCandidateCuts(manifest, HIGH_ENERGY_HOOK_PROFILE);
     const silenceCuts = cuts.filter(c => c.reason === 'silence_start' || c.reason === 'silence_end');
     expect(silenceCuts.length).toBeGreaterThan(0);
   });
 
   it('produces mid-sentence cuts when allowMidSentenceCuts is true', () => {
     const manifest = makeManifest();
-    const cuts = agent.buildCandidateCuts(manifest, CASEY_NEISTAT_PROFILE);
+    const cuts = agent.buildCandidateCuts(manifest, CONTINUOUS_VLOG_PROFILE);
     const midCuts = cuts.filter(c => c.reason === 'mid_sentence');
     expect(midCuts.length).toBeGreaterThan(0);
   });
 
   it('does NOT produce mid-sentence cuts when allowMidSentenceCuts is false', () => {
     const manifest = makeManifest();
-    const cuts = agent.buildCandidateCuts(manifest, MRBEAST_PROFILE);
+    const cuts = agent.buildCandidateCuts(manifest, HIGH_ENERGY_HOOK_PROFILE);
     const midCuts = cuts.filter(c => c.reason === 'mid_sentence');
     expect(midCuts).toHaveLength(0);
   });
 
   it('deduplicates cuts within 100ms', () => {
     const manifest = makeManifest();
-    const cuts = agent.buildCandidateCuts(manifest, MRBEAST_PROFILE);
+    const cuts = agent.buildCandidateCuts(manifest, HIGH_ENERGY_HOOK_PROFILE);
     for (let i = 1; i < cuts.length; i++) {
       expect(Math.abs(cuts[i].timestampMs - cuts[i - 1].timestampMs)).toBeGreaterThanOrEqual(100);
     }
@@ -226,7 +226,7 @@ describe('EditingAgent.buildCandidateCuts', () => {
 
   it('returns cuts sorted by timestamp', () => {
     const manifest = makeManifest();
-    const cuts = agent.buildCandidateCuts(manifest, MRBEAST_PROFILE);
+    const cuts = agent.buildCandidateCuts(manifest, HIGH_ENERGY_HOOK_PROFILE);
     for (let i = 1; i < cuts.length; i++) {
       expect(cuts[i].timestampMs).toBeGreaterThanOrEqual(cuts[i - 1].timestampMs);
     }
@@ -234,7 +234,7 @@ describe('EditingAgent.buildCandidateCuts', () => {
 
   it('assigns editIQEnergy to all cuts', () => {
     const manifest = makeManifest();
-    const cuts = agent.buildCandidateCuts(manifest, MRBEAST_PROFILE);
+    const cuts = agent.buildCandidateCuts(manifest, HIGH_ENERGY_HOOK_PROFILE);
     for (const cut of cuts) {
       expect(cut.editIQEnergy).toBeDefined();
       expect(typeof cut.editIQEnergy).toBe('number');
@@ -252,7 +252,7 @@ describe('EditingAgent.buildCandidateCuts', () => {
         { frameNumber: 150, timestampMs: 5000, saliencyScore: 0.5, motionMagnitude: 0.1, hasFace: false, focusX: 0.5, focusY: 0.5 },
       ],
     });
-    const cuts = agent.buildCandidateCuts(manifest, MRBEAST_PROFILE);
+    const cuts = agent.buildCandidateCuts(manifest, HIGH_ENERGY_HOOK_PROFILE);
     const motionCuts = cuts.filter(c => c.reason === 'motion_peak');
     expect(motionCuts.length).toBeGreaterThan(0);
   });
@@ -263,51 +263,51 @@ describe('EditingAgent.buildCandidateCuts', () => {
 describe('EditingAgent.selectCuts', () => {
   const agent = new EditingAgent(noopLLM);
 
-  it('dispatches to Progressive Rhythm for MrBeast', () => {
+  it('dispatches to Progressive Rhythm for High-Energy Hook', () => {
     const manifest = makeManifest();
-    const candidates = agent.buildCandidateCuts(manifest, MRBEAST_PROFILE);
-    const selected = agent.selectCuts(candidates, manifest, MRBEAST_PROFILE);
+    const candidates = agent.buildCandidateCuts(manifest, HIGH_ENERGY_HOOK_PROFILE);
+    const selected = agent.selectCuts(candidates, manifest, HIGH_ENERGY_HOOK_PROFILE);
     // Should select some cuts, fewer than candidates
     expect(selected.length).toBeGreaterThan(0);
     expect(selected.length).toBeLessThanOrEqual(candidates.length);
   });
 
-  it('dispatches to Continuous Thought for Casey', () => {
+  it('dispatches to Continuous Thought for Continuous Vlog', () => {
     const manifest = makeManifest();
-    const candidates = agent.buildCandidateCuts(manifest, CASEY_NEISTAT_PROFILE);
-    const selected = agent.selectCuts(candidates, manifest, CASEY_NEISTAT_PROFILE);
+    const candidates = agent.buildCandidateCuts(manifest, CONTINUOUS_VLOG_PROFILE);
+    const selected = agent.selectCuts(candidates, manifest, CONTINUOUS_VLOG_PROFILE);
     expect(selected.length).toBeGreaterThan(0);
     expect(selected.length).toBeLessThanOrEqual(candidates.length);
   });
 
   it('selected cuts are chronologically ordered', () => {
     const manifest = makeManifest();
-    const candidates = agent.buildCandidateCuts(manifest, MRBEAST_PROFILE);
-    const selected = agent.selectCuts(candidates, manifest, MRBEAST_PROFILE);
+    const candidates = agent.buildCandidateCuts(manifest, HIGH_ENERGY_HOOK_PROFILE);
+    const selected = agent.selectCuts(candidates, manifest, HIGH_ENERGY_HOOK_PROFILE);
     for (let i = 1; i < selected.length; i++) {
       expect(selected[i].timestampMs).toBeGreaterThanOrEqual(selected[i - 1].timestampMs);
     }
   });
 
-  it('dispatches to Slow Build for MKBHD', () => {
+  it('dispatches to Slow Build for Clean Tech Review', () => {
     const manifest = makeManifest();
-    const candidates = agent.buildCandidateCuts(manifest, MKBHD_PROFILE);
-    const selected = agent.selectCuts(candidates, manifest, MKBHD_PROFILE);
+    const candidates = agent.buildCandidateCuts(manifest, CLEAN_TECH_REVIEW_PROFILE);
+    const selected = agent.selectCuts(candidates, manifest, CLEAN_TECH_REVIEW_PROFILE);
     expect(selected.length).toBeGreaterThanOrEqual(0);
     expect(selected.length).toBeLessThanOrEqual(candidates.length);
   });
 
-  it('dispatches to Chaotic for David Dobrik', () => {
+  it('dispatches to Chaotic for Rapid Reaction', () => {
     const manifest = makeManifest();
-    const candidates = agent.buildCandidateCuts(manifest, DAVID_DOBRIK_PROFILE);
-    const selected = agent.selectCuts(candidates, manifest, DAVID_DOBRIK_PROFILE);
+    const candidates = agent.buildCandidateCuts(manifest, RAPID_REACTION_PROFILE);
+    const selected = agent.selectCuts(candidates, manifest, RAPID_REACTION_PROFILE);
     expect(selected.length).toBeGreaterThanOrEqual(0);
   });
 
-  it('dispatches to Narrative Arc for Yes Theory', () => {
+  it('dispatches to Narrative Arc for Narrative Adventure', () => {
     const manifest = makeManifest();
-    const candidates = agent.buildCandidateCuts(manifest, YES_THEORY_PROFILE);
-    const selected = agent.selectCuts(candidates, manifest, YES_THEORY_PROFILE);
+    const candidates = agent.buildCandidateCuts(manifest, NARRATIVE_ADVENTURE_PROFILE);
+    const selected = agent.selectCuts(candidates, manifest, NARRATIVE_ADVENTURE_PROFILE);
     expect(selected.length).toBeGreaterThanOrEqual(0);
     expect(selected.length).toBeLessThanOrEqual(candidates.length);
   });
@@ -320,9 +320,9 @@ describe('EditingAgent.generateOTIOTimelineDeterministic', () => {
 
   it('produces a valid Timeline with name and tracks', () => {
     const manifest = makeManifest();
-    const timeline = agent.generateOTIOTimelineDeterministic(manifest, MRBEAST_PROFILE);
+    const timeline = agent.generateOTIOTimelineDeterministic(manifest, HIGH_ENERGY_HOOK_PROFILE);
 
-    expect(timeline.name).toContain('MrBeast');
+    expect(timeline.name).toContain('High-Energy Hook');
     expect(timeline.globalStartTime.rate).toBe(30);
     expect(timeline.tracks).toHaveLength(1);
     expect(timeline.tracks[0].kind).toBe('Video');
@@ -330,13 +330,13 @@ describe('EditingAgent.generateOTIOTimelineDeterministic', () => {
 
   it('first clip has styleTag "Hook"', () => {
     const manifest = makeManifest();
-    const timeline = agent.generateOTIOTimelineDeterministic(manifest, MRBEAST_PROFILE);
+    const timeline = agent.generateOTIOTimelineDeterministic(manifest, HIGH_ENERGY_HOOK_PROFILE);
     expect(timeline.tracks[0].clips[0].styleTag).toBe('Hook');
   });
 
   it('all clips have positive duration', () => {
     const manifest = makeManifest();
-    const timeline = agent.generateOTIOTimelineDeterministic(manifest, MRBEAST_PROFILE);
+    const timeline = agent.generateOTIOTimelineDeterministic(manifest, HIGH_ENERGY_HOOK_PROFILE);
     for (const clip of timeline.tracks[0].clips) {
       expect(clip.sourceRange.duration.value).toBeGreaterThan(0);
     }
@@ -344,7 +344,7 @@ describe('EditingAgent.generateOTIOTimelineDeterministic', () => {
 
   it('all clips have non-negative start frames', () => {
     const manifest = makeManifest();
-    const timeline = agent.generateOTIOTimelineDeterministic(manifest, MRBEAST_PROFILE);
+    const timeline = agent.generateOTIOTimelineDeterministic(manifest, HIGH_ENERGY_HOOK_PROFILE);
     for (const clip of timeline.tracks[0].clips) {
       expect(clip.sourceRange.startTime.value).toBeGreaterThanOrEqual(0);
     }
@@ -352,7 +352,7 @@ describe('EditingAgent.generateOTIOTimelineDeterministic', () => {
 
   it('clips do not exceed source duration', () => {
     const manifest = makeManifest();
-    const timeline = agent.generateOTIOTimelineDeterministic(manifest, MRBEAST_PROFILE);
+    const timeline = agent.generateOTIOTimelineDeterministic(manifest, HIGH_ENERGY_HOOK_PROFILE);
     const totalFrames = Math.ceil((manifest.durationMs / 1000) * manifest.fps);
     for (const clip of timeline.tracks[0].clips) {
       const endFrame = clip.sourceRange.startTime.value + clip.sourceRange.duration.value;
@@ -362,7 +362,7 @@ describe('EditingAgent.generateOTIOTimelineDeterministic', () => {
 
   it('clips reference correct source file', () => {
     const manifest = makeManifest();
-    const timeline = agent.generateOTIOTimelineDeterministic(manifest, MRBEAST_PROFILE);
+    const timeline = agent.generateOTIOTimelineDeterministic(manifest, HIGH_ENERGY_HOOK_PROFILE);
     for (const clip of timeline.tracks[0].clips) {
       expect(clip.mediaReference.targetUrl).toBe('test.mp4');
     }
@@ -370,23 +370,23 @@ describe('EditingAgent.generateOTIOTimelineDeterministic', () => {
 
   it('FPS is consistent across all clips', () => {
     const manifest = makeManifest();
-    const timeline = agent.generateOTIOTimelineDeterministic(manifest, MRBEAST_PROFILE);
+    const timeline = agent.generateOTIOTimelineDeterministic(manifest, HIGH_ENERGY_HOOK_PROFILE);
     for (const clip of timeline.tracks[0].clips) {
       expect(clip.sourceRange.startTime.rate).toBe(30);
       expect(clip.sourceRange.duration.rate).toBe(30);
     }
   });
 
-  it('works with Casey Neistat profile too', () => {
+  it('works with Continuous Vlog profile too', () => {
     const manifest = makeManifest();
-    const timeline = agent.generateOTIOTimelineDeterministic(manifest, CASEY_NEISTAT_PROFILE);
-    expect(timeline.name).toContain('Casey Neistat');
+    const timeline = agent.generateOTIOTimelineDeterministic(manifest, CONTINUOUS_VLOG_PROFILE);
+    expect(timeline.name).toContain('Continuous Vlog');
     expect(timeline.tracks[0].clips.length).toBeGreaterThan(0);
   });
 
   it('handles empty transcript gracefully', () => {
     const manifest = makeManifest({ transcript: [], silentPauses: [] });
-    const timeline = agent.generateOTIOTimelineDeterministic(manifest, MRBEAST_PROFILE);
+    const timeline = agent.generateOTIOTimelineDeterministic(manifest, HIGH_ENERGY_HOOK_PROFILE);
     // Should still produce at least 1 clip (the full duration)
     expect(timeline.tracks[0].clips.length).toBeGreaterThanOrEqual(1);
   });
@@ -394,12 +394,12 @@ describe('EditingAgent.generateOTIOTimelineDeterministic', () => {
 
 // ─── Slow Build pacing ──────────────────────────────────────────────
 
-describe('Slow Build pacing (MKBHD)', () => {
+describe('Slow Build pacing (Clean Tech Review)', () => {
   const agent = new EditingAgent(noopLLM);
 
   it('produces a valid timeline', () => {
     const manifest = makeManifest();
-    const timeline = agent.generateOTIOTimelineDeterministic(manifest, MKBHD_PROFILE);
+    const timeline = agent.generateOTIOTimelineDeterministic(manifest, CLEAN_TECH_REVIEW_PROFILE);
     expect(timeline.tracks[0].clips.length).toBeGreaterThan(0);
     for (const clip of timeline.tracks[0].clips) {
       expect(clip.sourceRange.duration.value).toBeGreaterThan(0);
@@ -408,8 +408,8 @@ describe('Slow Build pacing (MKBHD)', () => {
 
   it('only selects sentence-aligned or scene-boundary cuts', () => {
     const manifest = makeManifest();
-    const candidates = agent.buildCandidateCuts(manifest, MKBHD_PROFILE);
-    const selected = agent.selectCuts(candidates, manifest, MKBHD_PROFILE);
+    const candidates = agent.buildCandidateCuts(manifest, CLEAN_TECH_REVIEW_PROFILE);
+    const selected = agent.selectCuts(candidates, manifest, CLEAN_TECH_REVIEW_PROFILE);
     for (const cut of selected) {
       expect(['sentence_boundary', 'sentence_start', 'scene_change']).toContain(cut.reason);
     }
@@ -418,21 +418,21 @@ describe('Slow Build pacing (MKBHD)', () => {
 
 // ─── Chaotic pacing ─────────────────────────────────────────────────
 
-describe('Chaotic pacing (David Dobrik)', () => {
+describe('Chaotic pacing (Rapid Reaction)', () => {
   const agent = new EditingAgent(noopLLM);
 
   it('produces a valid timeline with many clips', () => {
     // Use a longer manifest to get more cuts
     const manifest = makeManifest({ durationMs: 120000 });
-    const timeline = agent.generateOTIOTimelineDeterministic(manifest, DAVID_DOBRIK_PROFILE);
+    const timeline = agent.generateOTIOTimelineDeterministic(manifest, RAPID_REACTION_PROFILE);
     expect(timeline.tracks[0].clips.length).toBeGreaterThan(0);
   });
 
   it('selected cuts respect minimum interval', () => {
     const manifest = makeManifest();
-    const candidates = agent.buildCandidateCuts(manifest, DAVID_DOBRIK_PROFILE);
-    const selected = agent.selectCuts(candidates, manifest, DAVID_DOBRIK_PROFILE);
-    const minMs = (DAVID_DOBRIK_PROFILE.bodyOverrides?.minShotDurationSeconds ?? 1) * 1000;
+    const candidates = agent.buildCandidateCuts(manifest, RAPID_REACTION_PROFILE);
+    const selected = agent.selectCuts(candidates, manifest, RAPID_REACTION_PROFILE);
+    const minMs = (RAPID_REACTION_PROFILE.bodyOverrides?.minShotDurationSeconds ?? 1) * 1000;
     for (let i = 1; i < selected.length; i++) {
       const gap = selected[i].timestampMs - selected[i - 1].timestampMs;
       expect(gap).toBeGreaterThanOrEqual(minMs - 1); // -1 for float tolerance
@@ -442,28 +442,28 @@ describe('Chaotic pacing (David Dobrik)', () => {
 
 // ─── Narrative Arc pacing ───────────────────────────────────────────
 
-describe('Narrative Arc pacing (Yes Theory / Vlog Brothers)', () => {
+describe('Narrative Arc pacing (Narrative Adventure / Long-Form Essay)', () => {
   const agent = new EditingAgent(noopLLM);
 
-  it('produces a valid timeline for Yes Theory', () => {
+  it('produces a valid timeline for Narrative Adventure', () => {
     const manifest = makeManifest();
-    const timeline = agent.generateOTIOTimelineDeterministic(manifest, YES_THEORY_PROFILE);
+    const timeline = agent.generateOTIOTimelineDeterministic(manifest, NARRATIVE_ADVENTURE_PROFILE);
     expect(timeline.tracks[0].clips.length).toBeGreaterThan(0);
     for (const clip of timeline.tracks[0].clips) {
       expect(clip.sourceRange.duration.value).toBeGreaterThan(0);
     }
   });
 
-  it('produces a valid timeline for Vlog Brothers', () => {
+  it('produces a valid timeline for Long-Form Essay', () => {
     const manifest = makeManifest();
-    const timeline = agent.generateOTIOTimelineDeterministic(manifest, VLOG_BROTHERS_PROFILE);
+    const timeline = agent.generateOTIOTimelineDeterministic(manifest, LONG_FORM_ESSAY_PROFILE);
     expect(timeline.tracks[0].clips.length).toBeGreaterThan(0);
   });
 
   it('selected cuts are chronologically ordered', () => {
     const manifest = makeManifest();
-    const candidates = agent.buildCandidateCuts(manifest, YES_THEORY_PROFILE);
-    const selected = agent.selectCuts(candidates, manifest, YES_THEORY_PROFILE);
+    const candidates = agent.buildCandidateCuts(manifest, NARRATIVE_ADVENTURE_PROFILE);
+    const selected = agent.selectCuts(candidates, manifest, NARRATIVE_ADVENTURE_PROFILE);
     for (let i = 1; i < selected.length; i++) {
       expect(selected[i].timestampMs).toBeGreaterThanOrEqual(selected[i - 1].timestampMs);
     }
@@ -475,14 +475,14 @@ describe('Narrative Arc pacing (Yes Theory / Vlog Brothers)', () => {
 describe('All 8 profiles produce valid timelines', () => {
   const agent = new EditingAgent(noopLLM);
   const allProfiles = [
-    MRBEAST_PROFILE,
-    CASEY_NEISTAT_PROFILE,
-    MKBHD_PROFILE,
-    DAVID_DOBRIK_PROFILE,
-    PETER_MCKINNON_PROFILE,
-    LINUS_TECH_TIPS_PROFILE,
-    YES_THEORY_PROFILE,
-    VLOG_BROTHERS_PROFILE,
+    HIGH_ENERGY_HOOK_PROFILE,
+    CONTINUOUS_VLOG_PROFILE,
+    CLEAN_TECH_REVIEW_PROFILE,
+    RAPID_REACTION_PROFILE,
+    CINEMATIC_VLOG_PROFILE,
+    FAST_INFORMATIVE_PROFILE,
+    NARRATIVE_ADVENTURE_PROFILE,
+    LONG_FORM_ESSAY_PROFILE,
   ];
 
   for (const profile of allProfiles) {
@@ -505,21 +505,148 @@ describe('All 8 profiles produce valid timelines', () => {
 
 describe('STYLE_PROFILES registry', () => {
   it('has all 8 profiles accessible', () => {
-    expect(STYLE_PROFILES['mrbeast']).toBeDefined();
-    expect(STYLE_PROFILES['casey neistat']).toBeDefined();
-    expect(STYLE_PROFILES['mkbhd']).toBeDefined();
-    expect(STYLE_PROFILES['david dobrik']).toBeDefined();
-    expect(STYLE_PROFILES['peter mckinnon']).toBeDefined();
-    expect(STYLE_PROFILES['linus tech tips']).toBeDefined();
-    expect(STYLE_PROFILES['yes theory']).toBeDefined();
-    expect(STYLE_PROFILES['vlog brothers']).toBeDefined();
+    expect(STYLE_PROFILES['high-energy-hook']).toBeDefined();
+    expect(STYLE_PROFILES['continuous-vlog']).toBeDefined();
+    expect(STYLE_PROFILES['clean-tech-review']).toBeDefined();
+    expect(STYLE_PROFILES['rapid-reaction']).toBeDefined();
+    expect(STYLE_PROFILES['cinematic-vlog']).toBeDefined();
+    expect(STYLE_PROFILES['fast-informative']).toBeDefined();
+    expect(STYLE_PROFILES['narrative-adventure']).toBeDefined();
+    expect(STYLE_PROFILES['long-form-essay']).toBeDefined();
   });
 
-  it('casey alias works', () => {
-    expect(STYLE_PROFILES['casey']).toBe(STYLE_PROFILES['casey neistat']);
+  // Match person/brand identifiers only — not generic words like "vlog".
+  const PERSON_NAME_RE =
+    /mrbeast|neistat|mkbhd|dobrik|mckinnon|\blinus\b|yes theory|vlog brothers|jimmy donaldson|marques/i;
+
+  it('keys are generic — no person names', () => {
+    const keys = Object.keys(STYLE_PROFILES).join(' ');
+    expect(keys).not.toMatch(PERSON_NAME_RE);
   });
 
-  it('linus alias works', () => {
-    expect(STYLE_PROFILES['linus']).toBe(STYLE_PROFILES['linus tech tips']);
+  it('every profile name is generic — no person names', () => {
+    for (const profile of Object.values(STYLE_PROFILES)) {
+      expect(profile.name).not.toMatch(PERSON_NAME_RE);
+    }
+  });
+});
+
+// ─── Refine-not-generate LLM path ────────────────────────────────────
+
+/** Records the messages/options it was called with and returns a canned reply. */
+function recordingLLM(reply: string) {
+  const calls: { messages: any[]; options?: any }[] = [];
+  const client: LLMClient = {
+    async chat(messages, options) {
+      calls.push({ messages, options });
+      return reply;
+    },
+  };
+  return { client, calls };
+}
+
+describe('generateOTIOTimeline (refine path)', () => {
+  it('returns a valid timeline and never re-emits geometry', async () => {
+    const manifest = makeManifest();
+    const { client, calls } = recordingLLM(JSON.stringify({ refinements: [] }));
+    const agent = new EditingAgent(client);
+
+    const base = agent.generateOTIOTimelineDeterministic(manifest, HIGH_ENERGY_HOOK_PROFILE);
+    const out = await agent.generateOTIOTimeline(manifest, HIGH_ENERGY_HOOK_PROFILE);
+
+    // Empty refinements → identical clip geometry to the deterministic base.
+    expect(out.tracks[0].clips.length).toBe(base.tracks[0].clips.length);
+    expect(out.tracks[0].clips[0].sourceRange).toEqual(base.tracks[0].clips[0].sourceRange);
+    expect(calls.length).toBe(1);
+  });
+
+  it('sends a compact prompt and a small token cap (no full-timeline regeneration)', async () => {
+    const manifest = makeManifest();
+    const { client, calls } = recordingLLM(JSON.stringify({ refinements: [] }));
+    const agent = new EditingAgent(client);
+
+    await agent.generateOTIOTimeline(manifest, HIGH_ENERGY_HOOK_PROFILE);
+
+    const { messages, options } = calls[0];
+    const userMsg = messages.find((m: any) => m.role === 'user')!.content as string;
+    const sysMsg = messages.find((m: any) => m.role === 'system')!.content as string;
+
+    // Compact per-clip lines, not a word-level transcript dump.
+    expect(userMsg).toMatch(/#0 /);
+    // System prompt is static (no per-video source filename embedded) → cacheable.
+    expect(sysMsg).not.toContain(manifest.sourceFile);
+    // Token cap is well below the old 4096 full-timeline budget.
+    expect(options.maxTokens).toBeLessThanOrEqual(2048);
+  });
+
+  it('applies tag and name refinements by clip index', async () => {
+    const manifest = makeManifest();
+    const reply = JSON.stringify({
+      refinements: [{ i: 0, tag: 'Reveal', name: 'Custom Hook Label' }],
+    });
+    const { client } = recordingLLM(reply);
+    const agent = new EditingAgent(client);
+
+    const out = await agent.generateOTIOTimeline(manifest, HIGH_ENERGY_HOOK_PROFILE);
+    expect(out.tracks[0].clips[0].styleTag).toBe('Reveal');
+    expect(out.tracks[0].clips[0].name).toBe('Custom Hook Label');
+  });
+
+  it('drops a clip when keep is false', async () => {
+    const manifest = makeManifest();
+    const empty = recordingLLM(JSON.stringify({ refinements: [] }));
+    const agentBase = new EditingAgent(empty.client);
+    const baseCount = (await agentBase.generateOTIOTimeline(manifest, HIGH_ENERGY_HOOK_PROFILE))
+      .tracks[0].clips.length;
+
+    const { client } = recordingLLM(JSON.stringify({ refinements: [{ i: 1, keep: false }] }));
+    const agent = new EditingAgent(client);
+    const out = await agent.generateOTIOTimeline(manifest, HIGH_ENERGY_HOOK_PROFILE);
+
+    expect(out.tracks[0].clips.length).toBe(baseCount - 1);
+  });
+
+  it('never drops every clip even if asked to', async () => {
+    const manifest = makeManifest();
+    // Refinements drop a large index range; applying must not empty the timeline.
+    const refinements = Array.from({ length: 500 }, (_, i) => ({ i, keep: false }));
+    const { client } = recordingLLM(JSON.stringify({ refinements }));
+    const agent = new EditingAgent(client);
+
+    const out = await agent.generateOTIOTimeline(manifest, HIGH_ENERGY_HOOK_PROFILE);
+    expect(out.tracks[0].clips.length).toBeGreaterThan(0);
+  });
+
+  it('falls back to the deterministic timeline on malformed JSON', async () => {
+    const manifest = makeManifest();
+    const { client } = recordingLLM('not json at all <<<');
+    const agent = new EditingAgent(client);
+
+    const base = agent.generateOTIOTimelineDeterministic(manifest, HIGH_ENERGY_HOOK_PROFILE);
+    const out = await agent.generateOTIOTimeline(manifest, HIGH_ENERGY_HOOK_PROFILE);
+    expect(out.tracks[0].clips.length).toBe(base.tracks[0].clips.length);
+  });
+
+  it('falls back to the deterministic timeline when the LLM throws', async () => {
+    const manifest = makeManifest();
+    const throwingLLM: LLMClient = {
+      async chat() {
+        throw new Error('network down');
+      },
+    };
+    const agent = new EditingAgent(throwingLLM);
+    const base = agent.generateOTIOTimelineDeterministic(manifest, HIGH_ENERGY_HOOK_PROFILE);
+    const out = await agent.generateOTIOTimeline(manifest, HIGH_ENERGY_HOOK_PROFILE);
+    expect(out.tracks[0].clips.length).toBe(base.tracks[0].clips.length);
+  });
+});
+
+describe('generateOTIOTimelineDeterministic is reproducible', () => {
+  it('produces identical timelines (incl. bRoll flags) across runs', () => {
+    const agent = new EditingAgent(noopLLM);
+    const manifest = makeManifest();
+    const a = agent.generateOTIOTimelineDeterministic(manifest, CONTINUOUS_VLOG_PROFILE);
+    const b = agent.generateOTIOTimelineDeterministic(manifest, CONTINUOUS_VLOG_PROFILE);
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   });
 });
