@@ -8,14 +8,12 @@ import multer from 'multer';
 import { execSync } from 'child_process';
 
 // @ts-ignore
-import { detect_shot_change, analyze_media, smart_export } from 'rust-media-engine';
+import { analyze_media, smart_export } from 'rust-media-engine';
 
 import { MetadataManifest } from './types/metadata';
 import {
   StyleProfile,
   STYLE_PROFILES,
-  MRBEAST_PROFILE,
-  CASEY_NEISTAT_PROFILE,
 } from './types/styleProfile';
 import { Timeline } from './agent/otioSchema';
 import { EditingAgent, OpenAIClient, LLMClient } from './agent/editingAgent';
@@ -26,17 +24,44 @@ import {
   pruneOldJobs,
   Job,
 } from './persistence/jobStore';
+import { pruneOldMedia } from './persistence/retention';
+import {
+  buildCors,
+  securityHeaders,
+  createRateLimiter,
+} from './middleware/security';
+import {
+  clerkBootstrap,
+  requireAuth,
+  requireTier,
+  getTier,
+  authConfigured,
+  TIER_MAX_UPLOAD_BYTES,
+} from './middleware/auth';
 
 const app = express();
-app.use(express.json({ limit: '500mb' }));
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
 
-const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3000';
-app.use((_req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', CORS_ORIGIN);
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  next();
+// Security middleware runs before any body parsing or route handling.
+app.use(securityHeaders());
+app.use(buildCors());
+app.use(clerkBootstrap());
+
+// Global API rate limit, with a stricter limit for expensive endpoints.
+const apiLimiter = createRateLimiter({
+  windowMs: 60_000,
+  max: 120,
+  name: 'API',
 });
+const heavyLimiter = createRateLimiter({
+  windowMs: 60_000,
+  max: 10,
+  name: 'media/AI',
+});
+app.use('/api/', apiLimiter);
+
+app.use(express.json({ limit: '50mb' }));
 
 const PUBLIC_DIR = path.resolve(__dirname, '../../public');
 if (!fs.existsSync(PUBLIC_DIR)) {
@@ -45,7 +70,26 @@ if (!fs.existsSync(PUBLIC_DIR)) {
 }
 console.log('Upload directory:', PUBLIC_DIR);
 
-app.use('/media', express.static(PUBLIC_DIR));
+// User media is access-controlled: require a signed-in caller when auth is
+// configured (no-op pass-through in demo mode).
+app.use('/media', requireAuth(), express.static(PUBLIC_DIR));
+
+// Let a user delete their own media on demand (privacy / right-to-erasure).
+app.delete('/api/media/:file', requireAuth(), (req: Request, res: Response) => {
+  const resolved = resolvePublicPath(req.params.file);
+  if (!resolved) {
+    return res.status(400).json({ error: 'Invalid file path' });
+  }
+  fs.unlink(resolved, (err) => {
+    if (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        return res.status(404).json({ error: 'file not found' });
+      }
+      return res.status(500).json({ error: 'failed to delete file' });
+    }
+    res.json({ deleted: path.basename(resolved) });
+  });
+});
 
 function resolvePublicPath(filePath: string): string | null {
   const resolved = path.resolve(PUBLIC_DIR, path.basename(filePath));
@@ -80,10 +124,23 @@ const upload = multer({
   },
 });
 
-const THRESHOLD = 120.0;
+// ─── Retention (see legal/PRIVACY_POLICY.md §4) ──────────────────────
+const RETENTION_HOURS = Number(process.env.RETENTION_HOURS) || 24;
+const RETENTION_MS = RETENTION_HOURS * 60 * 60 * 1000;
+// Max size (bytes) a file may be when read into memory for analysis.
+const ANALYZE_MAX_BYTES = (Number(process.env.ANALYZE_MAX_MB) || 4096) * 1024 ** 2;
 
-// Prune old jobs every 30 minutes
-setInterval(pruneOldJobs, 30 * 60 * 1000);
+function sweepRetention() {
+  pruneOldJobs();
+  const removed = pruneOldMedia(PUBLIC_DIR, RETENTION_MS);
+  if (removed > 0) {
+    console.log(`[retention] purged ${removed} media file(s) older than ${RETENTION_HOURS}h`);
+  }
+}
+
+// Sweep on boot and every 30 minutes thereafter.
+sweepRetention();
+setInterval(sweepRetention, 30 * 60 * 1000);
 
 const apiKey = process.env.OPENAI_API_KEY || '';
 const aiModel = process.env.OPENAI_MODEL || 'gpt-4o-mini';
@@ -127,12 +184,13 @@ app.get('/api/health', (_req: Request, res: Response) => {
     uptime: Math.floor((Date.now() - startTime) / 1000),
     ffmpegAvailable,
     llmConfigured: !!apiKey,
+    authConfigured,
   });
 });
 
 // ─── Job Endpoints ───────────────────────────────────────────────────
 
-app.get('/api/jobs/:id', (req: Request, res: Response) => {
+app.get('/api/jobs/:id', requireAuth(), (req: Request, res: Response) => {
   const job = getJob(req.params.id);
   if (!job) {
     return res.status(404).json({ error: 'job not found' });
@@ -144,7 +202,7 @@ app.get('/api/styles', (_req: Request, res: Response) => {
   res.json(STYLE_PROFILES);
 });
 
-app.post('/api/upload', (req: Request, res: Response) => {
+app.post('/api/upload', requireAuth(), heavyLimiter, (req: Request, res: Response) => {
   upload.single('video')(req, res, (err) => {
     try {
       if (err) {
@@ -155,6 +213,17 @@ app.post('/api/upload', (req: Request, res: Response) => {
       if (!file) {
         return res.status(400).json({ error: 'No file received. Use field name "video".' });
       }
+
+      // Enforce per-tier upload ceiling and delete oversized uploads.
+      const tier = getTier(req);
+      const maxBytes = TIER_MAX_UPLOAD_BYTES[tier];
+      if (file.size > maxBytes) {
+        fs.unlink(file.path, () => undefined);
+        return res.status(413).json({
+          error: `File exceeds the ${(maxBytes / 1024 ** 2).toFixed(0)} MB limit for the "${tier}" plan.`,
+        });
+      }
+
       console.log(`Uploaded: ${file.filename} (${(file.size / 1024 / 1024).toFixed(1)} MB)`);
       res.json({
         fileName: file.filename,
@@ -169,7 +238,7 @@ app.post('/api/upload', (req: Request, res: Response) => {
   });
 });
 
-app.post('/api/analyze-media', async (req: Request, res: Response) => {
+app.post('/api/analyze-media', requireAuth(), heavyLimiter, async (req: Request, res: Response) => {
   try {
     const {
       filePath,
@@ -192,7 +261,13 @@ app.post('/api/analyze-media', async (req: Request, res: Response) => {
       return res.status(404).json({ error: `File not found: ${filePath}` });
     }
 
-    const fileBuffer = fs.readFileSync(absolutePath);
+    if (fs.statSync(absolutePath).size > ANALYZE_MAX_BYTES) {
+      return res.status(413).json({
+        error: `File too large to analyze (limit ${(ANALYZE_MAX_BYTES / 1024 ** 2).toFixed(0)} MB).`,
+      });
+    }
+
+    const fileBuffer = await fs.promises.readFile(absolutePath);
     const fileName = path.basename(filePath);
 
     console.log(
@@ -224,7 +299,7 @@ app.post('/api/analyze-media', async (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/analyze-media-job', async (req: Request, res: Response) => {
+app.post('/api/analyze-media-job', requireAuth(), heavyLimiter, async (req: Request, res: Response) => {
   const {
     filePath,
     fps = 30,
@@ -246,7 +321,13 @@ app.post('/api/analyze-media-job', async (req: Request, res: Response) => {
     return res.status(404).json({ error: `File not found: ${filePath}` });
   }
 
-  const fileBuffer = fs.readFileSync(absolutePath);
+  if (fs.statSync(absolutePath).size > ANALYZE_MAX_BYTES) {
+    return res.status(413).json({
+      error: `File too large to analyze (limit ${(ANALYZE_MAX_BYTES / 1024 ** 2).toFixed(0)} MB).`,
+    });
+  }
+
+  const fileBuffer = await fs.promises.readFile(absolutePath);
   const fileName = path.basename(filePath);
 
   const job = createJob(
@@ -349,7 +430,7 @@ app.post('/api/analyze-media-job', async (req: Request, res: Response) => {
   })();
 });
 
-app.get('/api/analyze-media-job/:id/result', (req: Request, res: Response) => {
+app.get('/api/analyze-media-job/:id/result', requireAuth(), (req: Request, res: Response) => {
   const job = getJob(req.params.id);
   if (!job) {
     return res.status(404).json({ error: 'job not found' });
@@ -367,7 +448,7 @@ app.post('/api/extract-metadata', async (req: Request, res: Response) => {
   res.redirect(307, '/api/analyze-media');
 });
 
-app.post('/api/generate-edit', async (req: Request, res: Response) => {
+app.post('/api/generate-edit', requireTier('pro'), heavyLimiter, async (req: Request, res: Response) => {
   try {
     const { manifest, style } = req.body as {
       manifest: MetadataManifest;
@@ -415,6 +496,7 @@ app.post('/api/generate-edit', async (req: Request, res: Response) => {
 
 app.post(
   '/api/generate-edit-deterministic',
+  requireAuth(),
   (req: Request, res: Response) => {
     try {
       const { manifest, style } = req.body as {
@@ -456,6 +538,7 @@ app.post(
 
 app.post(
   '/api/generate-edit-deterministic-job',
+  requireAuth(),
   (req: Request, res: Response) => {
     const { manifest, style } = req.body as {
       manifest: MetadataManifest;
@@ -529,6 +612,7 @@ app.post(
 
 app.get(
   '/api/generate-edit-deterministic-job/:id/result',
+  requireAuth(),
   (req: Request, res: Response) => {
     const job = getJob(req.params.id);
     if (!job) {
@@ -544,7 +628,7 @@ app.get(
   },
 );
 
-app.post('/api/smart-export', async (req: Request, res: Response) => {
+app.post('/api/smart-export', requireTier('pro'), heavyLimiter, async (req: Request, res: Response) => {
   try {
     const { timeline, sourceFile, outputFile } = req.body as {
       timeline: Timeline;
@@ -621,7 +705,7 @@ app.post('/api/smart-export', async (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/smart-export-job', async (req: Request, res: Response) => {
+app.post('/api/smart-export-job', requireTier('pro'), heavyLimiter, async (req: Request, res: Response) => {
   const { timeline, sourceFile, outputFile } = req.body as {
     timeline: Timeline;
     sourceFile: string;
@@ -729,7 +813,7 @@ app.post('/api/smart-export-job', async (req: Request, res: Response) => {
   })();
 });
 
-app.get('/api/smart-export-job/:id/result', (req: Request, res: Response) => {
+app.get('/api/smart-export-job/:id/result', requireAuth(), (req: Request, res: Response) => {
   const job = getJob(req.params.id);
   if (!job) {
     return res.status(404).json({ error: 'job not found' });
@@ -743,52 +827,9 @@ app.get('/api/smart-export-job/:id/result', (req: Request, res: Response) => {
   res.json(job.result);
 });
 
-app.post('/api/analyze-video', (req: Request, res: Response) => {
-  const dummyVideoBuffer = Buffer.from([10, 250, 40, 200, 150]);
-
-  let shotChanged = false;
-  try {
-    shotChanged = detect_shot_change(dummyVideoBuffer, THRESHOLD);
-    console.log(`Rust Engine Report – Shot changed: ${shotChanged}`);
-  } catch (e) {
-    console.error('Rust bridging error:', e);
-    return res.status(500).json({ error: 'Media Engine failure' });
-  }
-
-  const mockOtioResponse: Timeline = {
-    name: 'Mock AI Generated Timeline',
-    globalStartTime: { value: 0, rate: 30 },
-    tracks: [
-      {
-        name: 'Primary Video',
-        kind: 'Video',
-        clips: [
-          {
-            name: shotChanged ? 'Action Cut' : 'Long Take',
-            sourceRange: {
-              startTime: { value: 0, rate: 30 },
-              duration: { value: 150, rate: 30 },
-            },
-            mediaReference: {
-              targetUrl: 'analyzed_clip.mp4',
-              availableRange: {
-                startTime: { value: 0, rate: 30 },
-                duration: { value: 300, rate: 30 },
-              },
-            },
-            styleTag: shotChanged ? 'High Energy Transition' : 'Atmospheric',
-          },
-        ],
-      },
-    ],
-  };
-
-  res.json(mockOtioResponse);
-});
-
 // ─── Regenerate with Notes ───────────────────────────────────────────
 
-app.post('/api/regenerate', (req: Request, res: Response) => {
+app.post('/api/regenerate', requireAuth(), (req: Request, res: Response) => {
   try {
     const { manifest, style, notes } = req.body as {
       manifest: MetadataManifest;
