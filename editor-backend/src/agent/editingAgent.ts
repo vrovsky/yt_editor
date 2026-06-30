@@ -13,9 +13,27 @@ import {
   TimeRange,
   MediaReference,
 } from './otioSchema';
+import { validateTimeline } from './timelineValidator';
+
+/** Deterministic pseudo-random unit value in [0, 1) from a string seed
+ *  (FNV-1a). Used so the "deterministic" timeline is genuinely reproducible. */
+function seededUnit(seed: string): number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) / 4294967296;
+}
+
+export interface ChatOptions {
+  /** Hard cap on completion tokens. Defaults to a small value because the
+   *  refine path returns a compact JSON array, not a full timeline. */
+  maxTokens?: number;
+}
 
 export interface LLMClient {
-  chat(messages: ChatMessage[]): Promise<string>;
+  chat(messages: ChatMessage[], options?: ChatOptions): Promise<string>;
 }
 
 export interface ChatMessage {
@@ -34,7 +52,7 @@ export class OpenAIClient implements LLMClient {
     this.baseUrl = baseUrl.replace(/\/$/, "");
   }
 
-  async chat(messages: ChatMessage[]): Promise<string> {
+  async chat(messages: ChatMessage[], options: ChatOptions = {}): Promise<string> {
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -44,8 +62,8 @@ export class OpenAIClient implements LLMClient {
       body: JSON.stringify({
         model: this.model,
         messages,
-        temperature: 0.3,
-        max_tokens: 4096,
+        temperature: 0.2,
+        max_tokens: options.maxTokens ?? 1024,
         response_format: { type: 'json_object' },
       }),
     });
@@ -68,6 +86,14 @@ interface CandidateCut {
   reason: string;
   score: number;
   editIQEnergy?: number;
+}
+
+/** A compact per-clip refinement returned by the LLM (keyed by clip index). */
+interface ClipRefinement {
+  i: number;
+  keep?: boolean;
+  tag?: string;
+  name?: string;
 }
 
 interface ProcessedSegment {
@@ -612,183 +638,190 @@ export class EditingAgent {
     return selected;
   }
 
-  private buildSystemPrompt(profile: StyleProfile): string {
-    const editIQDesc = profile.editIQWeights
-      ? `\n## EditIQ Weights
-- Jump cut penalty: ${profile.editIQWeights.jumpCutPenalty}
-- Sentence start reward: ${profile.editIQWeights.sentenceStartReward}
-- Audio transient reward: ${profile.editIQWeights.audioTransientReward}
-- Scene boundary reward: ${profile.editIQWeights.sceneBoundaryReward}
-- Saliency interrupt penalty: ${profile.editIQWeights.saliencyInterruptPenalty}
-- Face presence reward: ${profile.editIQWeights.facePresenceReward}`
-      : '';
+  // ─── Refine-not-generate LLM path ──────────────────────────────────
+  //
+  // Token-cost note: the deterministic engine already produces a complete,
+  // valid OTIO timeline locally for free. The LLM is therefore used only to
+  // *refine* that timeline — relabel styleTags/clip names and optionally drop
+  // weak clips — by returning a compact JSON array keyed on clip index. We
+  // never ask it to re-emit frame geometry. This cuts tokens by ~70-90% vs.
+  // regenerating the whole timeline and removes the truncated-JSON failure mode.
 
-    return `You are an expert video editor AI implementing the "${profile.name}" editing style.
+  /** Max clips described to the LLM. Beyond this, extra clips keep their
+   *  deterministic labels (logged) so the prompt stays bounded. */
+  private static readonly MAX_CLIPS_IN_PROMPT = 250;
+  /** Per-clip transcript snippet cap (characters). */
+  private static readonly CLIP_TEXT_CHARS = 100;
+
+  /** Static, per-style instruction. Contains no per-video data so identical
+   *  requests for the same style share a cacheable prompt prefix. */
+  private buildRefineSystemPrompt(profile: StyleProfile): string {
+    return `You are a video-editing assistant refining a pre-cut timeline for the "${profile.name}" style.
 
 ## Style: ${profile.description}
+- Pacing: ${profile.pacingType} | target ${profile.cutDensityPerMinute} cuts/min
+- B-roll bias: ${Math.round(profile.bRollProbability * 100)}% | transitions: ${profile.preferredTransitions.join(', ')}
 
-## Parameters
-- Cut density: ${profile.cutDensityPerMinute} cuts/min
-- Visual reset: every ${profile.visualResetIntervalSeconds}s
-- Pacing: ${profile.pacingType}
-- B-roll probability: ${profile.bRollProbability * 100}%
-- Transitions: ${profile.preferredTransitions.join(', ')}
-- Silent cut: ${profile.silentCutMode}${profile.silentCutMode === 'shorten' ? ` (max ${profile.maxSilenceMs}ms)` : ''}
-- Mid-sentence cuts: ${profile.allowMidSentenceCuts ? 'YES' : 'NO'}
-${profile.introOverrides ? `- HOOK ZONE (first ${profile.introOverrides.durationSeconds}s): ${profile.introOverrides.cutDensityPerMinute} cuts/min, visual reset every ${profile.introOverrides.visualResetIntervalSeconds}s` : ''}
-${profile.bodyOverrides ? `- BODY: ${profile.bodyOverrides.minShotDurationSeconds}-${profile.bodyOverrides.maxShotDurationSeconds}s per shot` : ''}
-${editIQDesc}
+## Task
+You are given a numbered list of clips that are ALREADY cut with valid timecodes.
+Do NOT change any timecodes. For clips that need it, return a refinement that:
+- sets a meaningful "tag" (e.g. "Hook", "Reveal", "Emotional Beat", "B-Roll", "Standard"), and/or
+- sets a short human "name" (<= 60 chars), and/or
+- sets "keep": false to drop a weak/redundant clip (drop sparingly).
 
-## Output Format
-Return a valid JSON object matching this OTIO Timeline schema:
-{
-  "name": "string",
-  "globalStartTime": { "value": 0, "rate": <fps> },
-  "tracks": [{
-    "name": "string",
-    "kind": "Video" | "Audio",
-    "clips": [{
-      "name": "string",
-      "sourceRange": {
-        "startTime": { "value": <frame>, "rate": <fps> },
-        "duration": { "value": <frames>, "rate": <fps> }
-      },
-      "mediaReference": {
-        "targetUrl": "string",
-        "availableRange": { "startTime": { "value": 0, "rate": <fps> }, "duration": { "value": <total_frames>, "rate": <fps> } }
-      },
-      "bRoll": boolean,
-      "styleTag": "string"
-    }]
-  }]
-}
+Omit any clip you would leave unchanged. Never drop every clip.
 
-## Rules
-1. Every clip's sourceRange must reference valid timecodes from the source.
-2. Mark "Must Keep" segments with styleTag: "Hook", "Reveal", "Emotional Beat", etc.
-3. Respect the EditIQ energy scores – prefer low-energy cut points.
-4. For "${profile.pacingType}" pacing, follow the algorithm constraints.
-5. Return ONLY the JSON object.`;
+## Output (ONLY this JSON object, no prose)
+{ "refinements": [ { "i": <clip index>, "keep": <bool, optional>, "tag": "<string, optional>", "name": "<string, optional>" } ] }`;
   }
 
-  private buildUserPrompt(
+  /** Compact per-clip summary derived from the deterministic base timeline. */
+  private buildRefineUserPrompt(
+    base: Timeline,
     manifest: MetadataManifest,
     profile: StyleProfile,
-    processedSegments: ProcessedSegment[],
-    selectedCuts: CandidateCut[],
-  ): string {
-    const totalSeconds = manifest.durationMs / 1000;
-    const targetClipCount = Math.ceil(
-      (totalSeconds / 60) * profile.cutDensityPerMinute,
-    );
+  ): { prompt: string; describedClips: number; totalClips: number } {
+    const clips = base.tracks[0]?.clips ?? [];
+    const max = EditingAgent.MAX_CLIPS_IN_PROMPT;
+    const described = Math.min(clips.length, max);
 
-    const fullTranscript = manifest.transcript
-      .map(
-        (seg) =>
-          `[${(seg.startMs / 1000).toFixed(1)}s-${(seg.endMs / 1000).toFixed(1)}s] ${seg.text}`,
-      )
-      .join('\n');
+    const lines: string[] = [];
+    for (let i = 0; i < described; i++) {
+      const clip = clips[i];
+      const rate = clip.sourceRange.startTime.rate || manifest.fps;
+      const startS = clip.sourceRange.startTime.value / rate;
+      const durS = clip.sourceRange.duration.value / rate;
+      const endS = startS + durS;
 
-    const sceneChangeSummary = manifest.sceneChanges
-      .map(
-        (sc) =>
-          `  F${sc.frameNumber} (${(sc.timestampMs / 1000).toFixed(2)}s) score=${sc.score.toFixed(2)}`,
-      )
-      .join('\n');
+      const text = manifest.transcript
+        .filter(
+          (seg) => seg.startMs < endS * 1000 && seg.endMs > startS * 1000,
+        )
+        .map((seg) => seg.text)
+        .join(' ')
+        .slice(0, EditingAgent.CLIP_TEXT_CHARS);
 
-    const selectedCutsSummary = selectedCuts
-      .map(
-        (c) =>
-          `  ${(c.timestampMs / 1000).toFixed(2)}s [${c.reason}] score=${c.score.toFixed(2)} energy=${(c.editIQEnergy ?? 0).toFixed(3)}`,
-      )
-      .join('\n');
+      lines.push(
+        `#${i} ${startS.toFixed(1)}-${endS.toFixed(1)}s tag=${clip.styleTag ?? 'Standard'} broll=${clip.bRoll ? 1 : 0}${text ? ` "${text}"` : ''}`,
+      );
+    }
 
-    const highSaliency = manifest.saliencyMap
-      .filter((f) => f.saliencyScore > 0.7)
-      .slice(0, 20)
-      .map(
-        (f) =>
-          `  F${f.frameNumber} (${(f.timestampMs / 1000).toFixed(2)}s) sal=${f.saliencyScore.toFixed(2)} motion=${f.motionMagnitude.toFixed(2)} face=${f.hasFace}`,
-      )
-      .join('\n');
-
-    return `## Source Media
-- File: ${manifest.sourceFile}
-- Duration: ${totalSeconds.toFixed(1)}s | FPS: ${manifest.fps} | ${manifest.width}x${manifest.height}
-- Target clips: ~${targetClipCount}
-
-## Transcript
-${fullTranscript}
-
-## Scene Changes (${manifest.sceneChanges.length})
-${sceneChangeSummary}
-
-## Selected Cut Points (${selectedCuts.length}, pre-filtered by ${profile.pacingType})
-${selectedCutsSummary}
-
-## High-Saliency Moments
-${highSaliency}
-
-Generate the OTIO Timeline JSON. Source file: "${manifest.sourceFile}", FPS: ${manifest.fps}, total frames: ${Math.ceil(totalSeconds * manifest.fps)}.
-Values are in FRAMES. Mark "Must Keep" segments with appropriate styleTags.`;
+    const prompt = `Clips (${described} of ${clips.length}; ${profile.pacingType} pacing):\n${lines.join('\n')}\n\nReturn the refinements JSON.`;
+    return { prompt, describedClips: described, totalClips: clips.length };
   }
 
-  private parseOTIOResponse(llmResponse: string): Timeline {
-    let timeline: Timeline;
+  /** Parse the compact refinement response. Returns [] on any malformed input
+   *  (caller falls back to the deterministic timeline). */
+  private parseRefinements(llmResponse: string): ClipRefinement[] {
     try {
-      timeline = JSON.parse(llmResponse) as Timeline;
-    } catch (e) {
-      throw new Error(
-        `Failed to parse LLM response as OTIO Timeline JSON: ${(e as Error).message}\n\nRaw response:\n${llmResponse.slice(0, 500)}`,
-      );
-    }
-
-    if (!timeline.name || !timeline.tracks || !Array.isArray(timeline.tracks)) {
-      throw new Error(
-        'Invalid OTIO Timeline: missing required fields (name, tracks)',
-      );
-    }
-
-    for (const track of timeline.tracks) {
-      if (!track.clips || !Array.isArray(track.clips)) {
-        throw new Error(
-          `Invalid OTIO Track "${track.name}": missing clips array`,
-        );
+      // Tolerate accidental code fences.
+      const cleaned = llmResponse.replace(/```json\s*|\s*```/g, '').trim();
+      const parsed = JSON.parse(cleaned) as { refinements?: unknown };
+      const arr = Array.isArray(parsed?.refinements) ? parsed.refinements : [];
+      const out: ClipRefinement[] = [];
+      for (const raw of arr) {
+        if (!raw || typeof raw !== 'object') continue;
+        const r = raw as Record<string, unknown>;
+        if (typeof r.i !== 'number' || !Number.isInteger(r.i) || r.i < 0) continue;
+        const ref: ClipRefinement = { i: r.i };
+        if (typeof r.keep === 'boolean') ref.keep = r.keep;
+        if (typeof r.tag === 'string' && r.tag.trim()) ref.tag = r.tag.slice(0, 60);
+        if (typeof r.name === 'string' && r.name.trim()) ref.name = r.name.slice(0, 60);
+        out.push(ref);
       }
-      for (const clip of track.clips) {
-        if (!clip.sourceRange || !clip.mediaReference) {
-          throw new Error(
-            `Invalid OTIO Clip "${clip.name}": missing sourceRange or mediaReference`,
-          );
-        }
-      }
+      return out;
+    } catch {
+      return [];
     }
+  }
 
-    return timeline;
+  /** Apply refinements to a copy of the base timeline by clip index. */
+  private applyRefinements(base: Timeline, refinements: ClipRefinement[]): Timeline {
+    const track = base.tracks[0];
+    if (!track) return base;
+
+    const byIndex = new Map<number, ClipRefinement>();
+    for (const r of refinements) byIndex.set(r.i, r);
+
+    const refined: Clip[] = [];
+    track.clips.forEach((clip, i) => {
+      const r = byIndex.get(i);
+      if (r?.keep === false) return; // drop
+      refined.push({
+        ...clip,
+        styleTag: r?.tag ?? clip.styleTag,
+        name: r?.name ?? clip.name,
+      });
+    });
+
+    // Never let the LLM drop everything.
+    const clips = refined.length > 0 ? refined : track.clips;
+
+    return {
+      ...base,
+      tracks: [{ ...track, clips }, ...base.tracks.slice(1)],
+    };
   }
 
   async generateOTIOTimeline(
     manifest: MetadataManifest,
     profile: StyleProfile,
   ): Promise<Timeline> {
-    const processedSegments = this.applySilentCuts(manifest, profile);
-    const candidateCuts = this.buildCandidateCuts(manifest, profile);
-    const selectedCuts = this.selectCuts(candidateCuts, manifest, profile);
+    // 1. Build the deterministic timeline locally (free, always valid).
+    const base = this.generateOTIOTimelineDeterministic(manifest, profile);
 
-    const systemPrompt = this.buildSystemPrompt(profile);
-    const userPrompt = this.buildUserPrompt(
-      manifest,
-      profile,
-      processedSegments,
-      selectedCuts,
-    );
+    // 2. Ask the LLM only to refine labels / drop weak clips (compact I/O).
+    const systemPrompt = this.buildRefineSystemPrompt(profile);
+    const { prompt: userPrompt, describedClips, totalClips } =
+      this.buildRefineUserPrompt(base, manifest, profile);
 
-    const llmResponse = await this.llm.chat([
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ]);
+    if (totalClips > describedClips) {
+      console.warn(
+        `[generateOTIOTimeline] ${totalClips - describedClips} clip(s) beyond ` +
+          `the ${EditingAgent.MAX_CLIPS_IN_PROMPT} prompt cap keep deterministic labels.`,
+      );
+    }
 
-    return this.parseOTIOResponse(llmResponse);
+    // Output is a compact array (~24 tokens/clip), bounded well below the
+    // old 4096-token full-timeline regeneration.
+    const maxTokens = Math.max(256, Math.min(2048, describedClips * 24));
+
+    let refinements: ClipRefinement[] = [];
+    try {
+      const llmResponse = await this.llm.chat(
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        { maxTokens },
+      );
+      refinements = this.parseRefinements(llmResponse);
+    } catch (e) {
+      console.warn(
+        `[generateOTIOTimeline] LLM refine failed, using deterministic timeline: ${(e as Error).message}`,
+      );
+      return base;
+    }
+
+    const refined = this.applyRefinements(base, refinements);
+
+    // 3. Validate before returning; fall back to the base on any violation.
+    const fps = manifest.fps;
+    const totalFrames = Math.ceil((manifest.durationMs / 1000) * fps);
+    const errors = validateTimeline(refined, {
+      sourceFile: manifest.sourceFile,
+      fps,
+      totalFrames,
+    });
+    if (errors.length > 0) {
+      console.warn(
+        `[generateOTIOTimeline] refined timeline invalid (${errors.length} error(s)), ` +
+          `using deterministic timeline. First: ${errors[0]}`,
+      );
+      return base;
+    }
+
+    return refined;
   }
 
   generateOTIOTimelineDeterministic(
@@ -849,9 +882,12 @@ Values are in FRAMES. Mark "Must Keep" segments with appropriate styleTags.`;
       const hasFaceInRange = manifest.saliencyMap.some(
         (f) => f.timestampMs >= startMs && f.timestampMs <= endMs && f.hasFace,
       );
+      // Seeded (not Math.random) so this path is actually reproducible:
+      // the same manifest + profile always yields the same B-roll decisions.
+      const bRollRoll = seededUnit(`${manifest.sourceFile}:${profile.name}:${i}`);
       const isBRoll =
         !hasFaceInRange &&
-        Math.random() < (profile.associativeCutProbability ?? profile.bRollProbability);
+        bRollRoll < (profile.associativeCutProbability ?? profile.bRollProbability);
 
       clips.push({
         name: clipText,
