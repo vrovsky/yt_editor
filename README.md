@@ -1,4 +1,3 @@
-Hack with Audacity Promthero track
 
 # AI Video Editor MVP (Transcript-Driven Rough Rust Based Video Cut Engine)
 
@@ -98,11 +97,20 @@ Implements the `rig-core` agent pattern:
 |------------------|----------------|
 | `Agent` | `EditingAgent` class |
 | `Tool` | `applySilentCuts()`, `buildCandidateCuts()`, `selectCuts()` |
-| `Prompt` | `buildSystemPrompt()`, `buildUserPrompt()` |
-| `Extractor` | `parseOTIOResponse()` |
+| `Prompt` | `buildRefineSystemPrompt()`, `buildRefineUserPrompt()` |
+| `Extractor` | `parseRefinements()` |
+
+> **Token-efficient "refine, don't regenerate".** The deterministic engine
+> first produces a complete, valid OTIO timeline locally (free). The LLM is
+> then used only to *refine* it — relabel `styleTag`/clip names and optionally
+> drop weak clips — by returning a compact JSON array keyed on clip index. It
+> never re-emits frame geometry. This cuts token usage ~70-90% vs. regenerating
+> the whole timeline, bounds the output (no truncated-JSON failures), keeps a
+> static (cacheable) per-style system prompt, and always validates the result —
+> falling back to the deterministic timeline on any LLM/parse/validation error.
 
 ### Outputed Example 
-MrBeast: Progressive Rhythm Algorithm
+High-Energy Hook: Progressive Rhythm Algorithm
 
 ```
 Phase 1: HOOK (0 – 30s)
@@ -163,7 +171,7 @@ E(cut) = w_jc × JumpCutPenalty(cut)         // visual discontinuity
 
 ```json
 {
-  "name": "MrBeast Style Edit – raw_footage.mp4",
+  "name": "High-Energy Hook Style Edit – raw_footage.mp4",
   "globalStartTime": { "value": 0, "rate": 30 },
   "tracks": [{
     "name": "V1 – Primary",
@@ -235,13 +243,27 @@ For a 10-minute video with 20 cuts (GOP=30):
 
 ## API Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/styles` | List available style profiles |
-| `POST` | `/api/analyze-media` | Extract MetadataManifest (Whisper + scene + saliency) |
-| `POST` | `/api/generate-edit` | LLM-powered OTIO generation |
-| `POST` | `/api/generate-edit-deterministic` | Deterministic OTIO generation |
-| `POST` | `/api/smart-export` | Smart Export (re-mux + selective re-encode) |
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/health` | public | Health/status (incl. `authConfigured`) |
+| `GET` | `/api/styles` | public | List available style presets |
+| `POST` | `/api/upload` | signed-in | Upload a video (per-tier size limit) |
+| `POST` | `/api/analyze-media` | signed-in | Extract MetadataManifest (Whisper + scene + saliency) |
+| `POST` | `/api/generate-edit` | **Pro+** | LLM-refined OTIO generation (token-metered) |
+| `POST` | `/api/generate-edit-deterministic` | signed-in | Deterministic OTIO generation (free) |
+| `POST` | `/api/smart-export` | **Pro+** | Smart Export (re-mux + selective re-encode) |
+| `DELETE` | `/api/media/:file` | signed-in | Delete one of your uploaded/exported files |
+
+> **Auth & limits.** When `CLERK_SECRET_KEY` is set, all data endpoints require a
+> signed-in user; LLM/export require the Pro tier; uploads enforce per-tier size.
+> Without a key the server runs in **demo mode** (unauthenticated — local dev only;
+> set `REQUIRE_AUTH=true` to refuse to boot open). CORS uses an allowlist
+> (`CORS_ORIGIN`), and a global + per-endpoint rate limit is applied. Uploaded
+> media is auto-deleted after `RETENTION_HOURS` (default 24).
+
+See [`legal/`](legal/) for the Terms of Service, Privacy Policy, Acceptable Use
+Policy, and subprocessor list, and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)
+for open-source attributions (including the ffmpeg license caveat).
 
 ---
 

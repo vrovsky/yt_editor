@@ -12,5 +12,12 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
-      - CORS_ORIGIN=${CORS_ORIGIN:-*}
+      # Comma-separated allowlist. Never use "*" in production.
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}
+      # Authentication (Clerk). Set REQUIRE_AUTH=true to refuse to boot open.
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY:-}
+      - REQUIRE_AUTH=${REQUIRE_AUTH:-false}
+      # Retention: auto-delete uploads/exports after N hours.
+      - RETENTION_HOURS=${RETENTION_HOURS:-24}
+      - ANALYZE_MAX_MB=${ANALYZE_MAX_MB:-4096}
     restart: unless-stopped
